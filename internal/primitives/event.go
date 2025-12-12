@@ -20,8 +20,8 @@
 package primitives
 
 type Event struct {
-	Type string
-	Data any
+	Type string `json:"type" yaml:"type"`
+	Data any `json:"data" yaml:"data"`
 }
 
 // NewEvent creates and returns a new immutable Event.

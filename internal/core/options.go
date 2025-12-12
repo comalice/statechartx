@@ -53,3 +53,10 @@ func WithQueueSize(size int) Option {
 		m.eventQueue = make(chan primitives.Event, size)
 	}
 }
+
+// WithRegistry configures the Machine with a custom Registry for versioning snapshots.
+func WithRegistry(r Registry) Option {
+	return func(m *Machine) {
+		m.registry = r
+	}
+}

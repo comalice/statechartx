@@ -121,7 +121,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [TODO.md](TODO.md).
 
 ## Installation
 ```bash
-go get github.com/albert/statechart
+go get github.com/comalice/statechartx
 ```
 
 ## License

@@ -17,9 +17,10 @@ import (
 
 // MachineConfig defines the complete statechart configuration.
 type MachineConfig struct {
-	ID      string                  `json:"id"`
-	Initial string                  `json:"initial"`
-	States  map[string]*StateConfig `json:"states"`
+	Version string `json:\"version,omitempty\" yaml:\"version,omitempty\"`
+	ID      string                  `json:"id" yaml:"id"`
+	Initial string                  `json:"initial" yaml:"initial"`
+	States  map[string]*StateConfig `json:"states" yaml:"states"`
 }
 
 // Validate validates the entire machine configuration:

@@ -25,13 +25,13 @@ const (
 
 // StateConfig defines a state configuration, supporting hierarchical nesting.
 type StateConfig struct {
-	ID       string                        `json:"id"`
-	Type     StateType                     `json:"type"`
-	Initial  string                        `json:"initial,omitempty"` // Initial child for compound/parallel
-	On       map[string][]TransitionConfig `json:"on,omitempty"`
-	Entry    []ActionRef                   `json:"entry,omitempty"`
-	Exit     []ActionRef                   `json:"exit,omitempty"`
-	Children []*StateConfig                `json:"children,omitempty"`
+	ID       string                        `json:"id" yaml:"id"`
+	Type     StateType                     `json:"type" yaml:"type"`
+	Initial  string                        `json:"initial,omitempty" yaml:"initial,omitempty"` // Initial child for compound/parallel
+	On       map[string][]TransitionConfig `json:"on,omitempty" yaml:"on,omitempty"`
+	Entry    []ActionRef                   `json:"entry,omitempty" yaml:"entry,omitempty"`
+	Exit     []ActionRef                   `json:"exit,omitempty" yaml:"exit,omitempty"`
+	Children []*StateConfig                `json:"children,omitempty" yaml:"children,omitempty"`
 }
 
 // NewStateConfig creates a new StateConfig with ID and Type.

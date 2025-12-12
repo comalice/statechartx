@@ -24,11 +24,11 @@ type GuardRef any
 
 // TransitionConfig defines a single transition triggered by an Event.
 type TransitionConfig struct {
-	Event    string      `json:"event"`
-	Guard    GuardRef    `json:"guard,omitempty"`
-	Target   string      `json:"target"`
-	Actions  []ActionRef `json:"actions,omitempty"`
-	Priority int         `json:"priority,omitempty"` // higher = evaluated first (default 0)
+	Event    string      `json:"event" yaml:"event"`
+	Guard    GuardRef    `json:"guard,omitempty" yaml:"guard,omitempty"`
+	Target   string      `json:"target" yaml:"target"`
+	Actions  []ActionRef `json:"actions,omitempty" yaml:"actions,omitempty"`
+	Priority int         `json:"priority,omitempty" yaml:"priority,omitempty"` // higher = evaluated first (default 0)
 }
 
 // Validate checks TransitionConfig fields and target path syntax.

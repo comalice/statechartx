@@ -41,18 +41,18 @@ type Persister interface {
 
 // MachineSnapshot is the serializable snapshot of machine runtime state.
 type MachineSnapshot struct {
-	MachineID    string                   `json:"machineID"`
-	Config       primitives.MachineConfig `json:"config"`
-	Current      []string                 `json:"current"`
-	ContextData  map[string]any           `json:"context"`
-	QueuedEvents []primitives.Event       `json:"queuedEvents,omitempty"`
-	Timestamp    time.Time                `json:"timestamp"`
+	MachineID    string                   `json:"machineID" yaml:"machineID"`
+	Config       primitives.MachineConfig `json:"config" yaml:"config"`
+	Current      []string                 `json:"current" yaml:"current"`
+	ContextData  map[string]any           `json:"context" yaml:"context"`
+	QueuedEvents []primitives.Event       `json:"queuedEvents,omitempty" yaml:"queuedEvents,omitempty"`
+	Timestamp    time.Time                `json:"timestamp" yaml:"timestamp"`
 }
 
 type MachineMetadata struct {
-	MachineID  string    `json:"machineID"`
-	Transition string    `json:"transition"`
-	Timestamp  time.Time `json:"timestamp"`
+	MachineID  string    `json:"machineID" yaml:"machineID"`
+	Transition string    `json:"transition" yaml:"transition"`
+	Timestamp  time.Time `json:"timestamp" yaml:"timestamp"`
 }
 
 type EventPublisher interface {
@@ -89,6 +89,14 @@ type Machine struct {
 	persister    Persister
 	publisher    EventPublisher
 	visualizer   Visualizer
+	registry     Registry
+}
+
+ // Config returns the machine's configuration (thread-safe shallow copy).
+func (m *Machine) Config() primitives.MachineConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config
 }
 
 // NewMachine creates and initializes a new Machine instance.
@@ -293,6 +301,11 @@ func (m *Machine) processEvent(event primitives.Event) {
 				Timestamp:  time.Now(),
 			}
 			if err := m.publisher.Publish(context.Background(), event, md); err != nil {
+				// TODO log
+			}
+		}
+		if m.registry != nil {
+			if err := m.registry.Register(context.Background(), m.config.ID, snapshot); err != nil {
 				// TODO log
 			}
 		}

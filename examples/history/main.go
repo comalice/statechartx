@@ -18,10 +18,10 @@ func main() {
 	session := mb.Compound("session").WithInitial("sub")
 	sub := session.Compound("sub").WithInitial("a")
 	sub.Atomic("a").Transition("SWITCH", "b")
-	history := sub.History("h", true)
+	sub.History("h", true)
 	b := sub.Atomic("b")
-	b.Transition("SAVE", "history")
-	b.Transition("RESTORE", "history")
+	b.Transition("SAVE", "h")
+	b.Transition("RESTORE", "h")
 	session.Atomic("restore").Transition("LOAD", "sub")
 
 	config := mb.Build()
