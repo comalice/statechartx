@@ -93,11 +93,11 @@ dot -Tsvg -o statechart.svg <(echo "$(./cmd/demo | head -n 20)")  # Render DOT
 ```
 
 ## Performance
-| Metric | Target | Achieved |
-|--------|--------|----------|
-| Latency | <1μs p99 | ~0.01μs (simple), pending opt |
-| Throughput | >1M tps | Pending MPSC queue |
-| Memory | <1MB/machine | 3.8KB/machine ✅ |
+| Metric     | Target       | Achieved                      |
+|------------|--------------|-------------------------------|
+| Latency    | <1μs p99     | ~0.01μs (simple), pending opt |
+| Throughput | >1M tps      | Pending MPSC queue            |
+| Memory     | <1MB/machine | 3.8KB/machine                 |
 
 Benchmarks: `go test -bench=. ./benchmarks/...`
 

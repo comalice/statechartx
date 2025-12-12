@@ -36,7 +36,7 @@ func GenDeepConfig(depth int) primitives.MachineConfig {
 	if depth < 1 {
 		depth = 1
 	}
-	mb := primitives.NewMachineBuilder(fmt.Sprintf("deep_%d", depth), "root")
+	mb := primitives.NewMachineBuilder(fmt.Sprintf("deep_%d", depth), "c0")
 	sb := mb.Compound("c0")
 	sb.WithInitial("leaf1")
 	leaf1 := sb.Atomic("leaf1")

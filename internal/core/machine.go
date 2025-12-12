@@ -9,7 +9,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -313,15 +312,11 @@ func (m *Machine) processEvent(event primitives.Event) {
 }
 
 // Send enqueues an event for asynchronous processing.
-// Blocks briefly; returns error if queue backpressure (full).
+// Blocks until the event is enqueued (backpressure throttling).
 // Thread-safe.
 func (m *Machine) Send(event primitives.Event) error {
-	select {
-	case m.eventQueue <- event:
-		return nil
-	default:
-		return errors.New("event queue full (backpressure)")
-	}
+	m.eventQueue <- event
+	return nil
 }
 
 // Current returns a copy of active state paths.

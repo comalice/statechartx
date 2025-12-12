@@ -43,20 +43,22 @@ func BenchmarkEventThroughput(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	numWorkers := 8
 	eventsPerWorker := b.N / numWorkers
-	if eventsPerWorker == 0 {
-		eventsPerWorker = 1
-	}
+	remainder := b.N % numWorkers
 	var wg sync.WaitGroup
 	b.ResetTimer()
 	b.ReportAllocs()
 	for w := 0; w < numWorkers; w++ {
+		events := eventsPerWorker
+		if w < remainder {
+			events++
+		}
 		wg.Add(1)
-		go func() {
+		go func(events int) {
 			defer wg.Done()
-			for i := 0; i < eventsPerWorker; i++ {
+			for i := 0; i < events; i++ {
 				m.Send(e)
 			}
-		}()
+		}(events)
 	}
 	wg.Wait()
 	// Wait for processing
@@ -107,20 +109,22 @@ func BenchmarkEventThroughputGuarded(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	numWorkers := 8
 	eventsPerWorker := b.N / numWorkers
-	if eventsPerWorker == 0 {
-		eventsPerWorker = 1
-	}
+	remainder := b.N % numWorkers
 	var wg sync.WaitGroup
 	b.ResetTimer()
 	b.ReportAllocs()
 	for w := 0; w < numWorkers; w++ {
+		events := eventsPerWorker
+		if w < remainder {
+			events++
+		}
 		wg.Add(1)
-		go func() {
+		go func(events int) {
 			defer wg.Done()
-			for i := 0; i < eventsPerWorker; i++ {
+			for i := 0; i < events; i++ {
 				m.Send(e)
 			}
-		}()
+		}(events)
 	}
 	wg.Wait()
 	timeout := time.After(30 * time.Second)
@@ -151,20 +155,22 @@ func BenchmarkEventThroughputDeep(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	numWorkers := 8
 	eventsPerWorker := b.N / numWorkers
-	if eventsPerWorker == 0 {
-		eventsPerWorker = 1
-	}
+	remainder := b.N % numWorkers
 	var wg sync.WaitGroup
 	b.ResetTimer()
 	b.ReportAllocs()
 	for w := 0; w < numWorkers; w++ {
+		events := eventsPerWorker
+		if w < remainder {
+			events++
+		}
 		wg.Add(1)
-		go func() {
+		go func(events int) {
 			defer wg.Done()
-			for i := 0; i < eventsPerWorker; i++ {
+			for i := 0; i < events; i++ {
 				m.Send(e)
 			}
-		}()
+		}(events)
 	}
 	wg.Wait()
 	// Approximate drain time for processing
