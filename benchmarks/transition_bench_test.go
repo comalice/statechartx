@@ -2,6 +2,7 @@
 package benchmarks
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/comalice/statechartx/internal/core"
@@ -159,5 +160,78 @@ func BenchmarkGuardedTransition(b *testing.B) {
 		if err := m.Send(e); err != nil {
 			b.Fatal(err)
 		}
+	}
+	m.Stop()
+}
+
+func BenchmarkDeepHierarchy(b *testing.B) {
+	for _, depth := range []int{1, 3, 5, 7} {
+		b.Run(fmt.Sprintf("depth=%d", depth), func(b *testing.B) {
+			config := GenDeepConfig(depth)
+			if err := config.Validate(); err != nil {
+				b.Fatal(err)
+			}
+			m := core.NewMachine(config, core.WithQueueSize(100000))
+			if err := m.Start(); err != nil {
+				b.Fatal(err)
+			}
+			e := primitives.NewEvent("tick", nil)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if err := m.Send(e); err != nil {
+					b.Fatal(err)
+				}
+			}
+			m.Stop()
+		})
+	}
+}
+
+func BenchmarkManyStates(b *testing.B) {
+	for _, n := range []int{10, 100, 1000} {
+		b.Run(fmt.Sprintf("states=%d", n), func(b *testing.B) {
+			config := GenFlatConfig(n)
+			if err := config.Validate(); err != nil {
+				b.Fatal(err)
+			}
+			m := core.NewMachine(config, core.WithQueueSize(100000))
+			if err := m.Start(); err != nil {
+				b.Fatal(err)
+			}
+			e := primitives.NewEvent("tick", nil)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if err := m.Send(e); err != nil {
+					b.Fatal(err)
+				}
+			}
+			m.Stop()
+		})
+	}
+}
+
+func BenchmarkWideTransitions(b *testing.B) {
+	for _, n := range []int{10, 50, 100} {
+		b.Run(fmt.Sprintf("transitions=%d", n), func(b *testing.B) {
+			config := GenWideTransitions(n)
+			if err := config.Validate(); err != nil {
+				b.Fatal(err)
+			}
+			m := core.NewMachine(config, core.WithQueueSize(100000))
+			if err := m.Start(); err != nil {
+				b.Fatal(err)
+			}
+			e := primitives.NewEvent("tick", nil)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if err := m.Send(e); err != nil {
+					b.Fatal(err)
+				}
+			}
+			m.Stop()
+		})
 	}
 }
