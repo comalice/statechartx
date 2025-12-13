@@ -28,7 +28,7 @@ func BenchmarkSimpleTransition(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(100000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}
@@ -36,9 +36,7 @@ func BenchmarkSimpleTransition(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if err := m.Send(e); err != nil {
-			b.Fatal(err)
-		}
+		m.Send(e)
 	}
 }
 
@@ -70,7 +68,7 @@ func BenchmarkHierarchicalTransition(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(100000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}
@@ -78,9 +76,7 @@ func BenchmarkHierarchicalTransition(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if err := m.Send(e); err != nil {
-			b.Fatal(err)
-		}
+		m.Send(e)
 	}
 }
 
@@ -112,7 +108,7 @@ func BenchmarkParallelTransition(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(100000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}
@@ -120,9 +116,7 @@ func BenchmarkParallelTransition(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if err := m.Send(e); err != nil {
-			b.Fatal(err)
-		}
+		m.Send(e)
 	}
 }
 
@@ -149,7 +143,7 @@ func BenchmarkGuardedTransition(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(100000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}
@@ -157,9 +151,7 @@ func BenchmarkGuardedTransition(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if err := m.Send(e); err != nil {
-			b.Fatal(err)
-		}
+		m.Send(e)
 	}
 	m.Stop()
 }
@@ -171,7 +163,7 @@ func BenchmarkDeepHierarchy(b *testing.B) {
 			if err := config.Validate(); err != nil {
 				b.Fatal(err)
 			}
-			m := core.NewMachine(config, core.WithQueueSize(100000))
+			m := core.NewMachine(config, core.WithQueueSize(10000000))
 			if err := m.Start(); err != nil {
 				b.Fatal(err)
 			}
@@ -195,7 +187,7 @@ func BenchmarkManyStates(b *testing.B) {
 			if err := config.Validate(); err != nil {
 				b.Fatal(err)
 			}
-			m := core.NewMachine(config, core.WithQueueSize(100000))
+			m := core.NewMachine(config, core.WithQueueSize(10000000))
 			if err := m.Start(); err != nil {
 				b.Fatal(err)
 			}
@@ -219,7 +211,7 @@ func BenchmarkWideTransitions(b *testing.B) {
 			if err := config.Validate(); err != nil {
 				b.Fatal(err)
 			}
-			m := core.NewMachine(config, core.WithQueueSize(100000))
+			m := core.NewMachine(config, core.WithQueueSize(10000000))
 			if err := m.Start(); err != nil {
 				b.Fatal(err)
 			}

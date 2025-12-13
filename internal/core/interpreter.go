@@ -16,16 +16,16 @@ type candidateTransition struct {
 
 // computeLCCA returns the least common compound ancestor path of source and target paths.
 func computeLCCA(sourcePath, targetPath string) string {
-	source := strings.Split(sourcePath, ".")
-	target := strings.Split(targetPath, ".")
+// zero-copy: scan bytes directly
 
-	minLen := len(source)
-	if len(target) < minLen {
-		minLen = len(target)
+
+	minLen := len(sourcePath)
+	if len(targetPath) < minLen {
+		minLen = len(targetPath)
 	}
 
 	lcaIndex := 0
-	for lcaIndex < minLen && source[lcaIndex] == target[lcaIndex] {
+	for lcaIndex < minLen && sourcePath[lcaIndex] == targetPath[lcaIndex] {
 		lcaIndex++
 	}
 
@@ -33,7 +33,15 @@ func computeLCCA(sourcePath, targetPath string) string {
 		return "" // No common ancestor
 	}
 
-	return strings.Join(source[:lcaIndex], ".")
+	if lcaIndex == len(sourcePath) {
+		return sourcePath
+	}
+	// Find last '.' before mismatch
+	lastDot := strings.LastIndex(sourcePath[:lcaIndex], ".")
+	if lastDot == -1 {
+		return sourcePath[:lcaIndex]
+	}
+	return sourcePath[:lastDot+1]
 }
 
 // getAncestors returns all ancestor paths of a leaf path (including self).

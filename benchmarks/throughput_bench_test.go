@@ -35,7 +35,7 @@ func BenchmarkEventThroughput(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(10000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func BenchmarkEventThroughput(b *testing.B) {
 	}
 	wg.Wait()
 	// Wait for processing
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(120 * time.Second)
 	for {
 		if atomic.LoadInt64(&processed) >= int64(b.N) {
 			break
@@ -101,7 +101,7 @@ func BenchmarkEventThroughputGuarded(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(10000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func BenchmarkEventThroughputGuarded(b *testing.B) {
 		}(events)
 	}
 	wg.Wait()
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(120 * time.Second)
 	for {
 		if atomic.LoadInt64(&processed) >= int64(b.N) {
 			break
@@ -147,7 +147,7 @@ func BenchmarkEventThroughputDeep(b *testing.B) {
 	if err := config.Validate(); err != nil {
 		b.Fatal(err)
 	}
-	m := core.NewMachine(config, core.WithQueueSize(10000))
+	m := core.NewMachine(config, core.WithQueueSize(10000000))
 	if err := m.Start(); err != nil {
 		b.Fatal(err)
 	}

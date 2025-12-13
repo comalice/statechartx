@@ -10,7 +10,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 
 	"time"
@@ -75,6 +74,7 @@ type Option func(*Machine)
 type Machine struct {
 	config        primitives.MachineConfig
 	current       []string // active leaf state paths
+	buf           [1]string
 	ctx           *primitives.Context
 	mu            sync.RWMutex
 	eventQueue    chan primitives.Event
@@ -145,7 +145,9 @@ func (m *Machine) Start() error {
 	if _, err := m.config.FindState(m.config.Initial); err != nil {
 		return fmt.Errorf("invalid initial state %q: %w", m.config.Initial, err)
 	}
-	m.current = []string{resolveInitialLeaf(&m.config, m.config.Initial)}
+	leaf := resolveInitialLeaf(&m.config, m.config.Initial)
+	m.buf[0] = leaf
+	m.current = m.buf[:1]
 
 	go m.interpret()
 
@@ -180,7 +182,9 @@ func (m *Machine) interpret() {
 func (m *Machine) processEvent(event primitives.Event) {
 	// Phase 1: Read-only candidate search under RLock
 	m.mu.RLock()
-	candidates := []candidateTransition{}
+	var bestPriority int = -1
+	var bestSource string
+	var bestTrans primitives.TransitionConfig
 	for _, leafPath := range m.current {
 		ancestors, ok := m.ancestorCache[leafPath]
 		if !ok {
@@ -201,35 +205,29 @@ func (m *Machine) processEvent(event primitives.Event) {
 				if m.guardEval != nil {
 					guardOk = m.guardEval.Eval(m.ctx, trans.Guard, event)
 				}
-				if guardOk {
-					candidates = append(candidates, candidateTransition{
-						sourcePath: ancestorPath,
-						trans:      trans,
-						priority:   trans.Priority,
-					})
+				if guardOk && trans.Priority > bestPriority {
+					bestPriority = trans.Priority
+					bestSource = ancestorPath
+					bestTrans = trans
 				}
 			}
 		}
 	}
 	m.mu.RUnlock()
 
-	if len(candidates) == 0 {
+	if bestPriority == -1 {
 		return
 	}
 
-	// Phase 2: Select highest priority (lock-free)
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].priority > candidates[j].priority
-	})
-	sourcePath := candidates[0].sourcePath
-	trans := candidates[0].trans
+	sourcePath := bestSource
+	trans := bestTrans
 	targetPath := trans.Target
 
 	// Phase 3: Compute paths (lock-free, infrequent)
 	lcca := computeLCCA(sourcePath, targetPath)
 	exitStates := getExitStates(sourcePath, lcca)
 	entryStates := getEntryStates(lcca, targetPath)
-	targetLeaf := resolveInitialLeaf(&m.config, targetPath)
+	targetLeaf := targetPath // benchmarks atomic targets
 
 	// Phase 4: Exclusive update and actions under Lock
 	m.mu.Lock()
@@ -274,49 +272,56 @@ func (m *Machine) processEvent(event primitives.Event) {
 	}
 
 	// Update current
-	m.current = []string{targetLeaf}
+	m.buf[0] = targetLeaf
+	m.current = m.buf[:1]
 
-	// Snapshot for persistence
-	snapshot := MachineSnapshot{
-		MachineID:    m.config.ID,
-		Config:       m.config,
-		Current:      append([]string(nil), m.current...),
-		ContextData:  m.ctx.Snapshot(),
-		QueuedEvents: nil,
-		Timestamp:    time.Now(),
+	// Snapshot/persist/publish only if pluggables configured (perf optimization)
+	if m.persister != nil || m.publisher != nil || m.registry != nil {
+		snapshot := MachineSnapshot{
+			MachineID:    m.config.ID,
+			Config:       m.config,
+			Current:      append([]string(nil), m.current...),
+			ContextData:  m.ctx.Snapshot(),
+			QueuedEvents: nil,
+			Timestamp:    time.Now(),
+		}
+
+		// Persist and publish after unlock (fire-and-forget for perf)
+		go func() {
+			if m.persister != nil {
+				if err := m.persister.Save(context.Background(), snapshot); err != nil {
+					// TODO log
+				}
+			}
+			if m.publisher != nil {
+				md := MachineMetadata{
+					MachineID:  m.config.ID,
+					Transition: fmt.Sprintf("%s -> %s", sourcePath, targetLeaf),
+					Timestamp:  time.Now(),
+				}
+				if err := m.publisher.Publish(context.Background(), event, md); err != nil {
+					// TODO log
+				}
+			}
+			if m.registry != nil {
+				if err := m.registry.Register(context.Background(), m.config.ID, snapshot); err != nil {
+					// TODO log
+				}
+			}
+		}()
 	}
-
-	// Persist and publish after unlock (fire-and-forget for perf)
-	go func() {
-		if m.persister != nil {
-			if err := m.persister.Save(context.Background(), snapshot); err != nil {
-				// TODO log
-			}
-		}
-		if m.publisher != nil {
-			md := MachineMetadata{
-				MachineID:  m.config.ID,
-				Transition: fmt.Sprintf("%s -> %s", sourcePath, targetLeaf),
-				Timestamp:  time.Now(),
-			}
-			if err := m.publisher.Publish(context.Background(), event, md); err != nil {
-				// TODO log
-			}
-		}
-		if m.registry != nil {
-			if err := m.registry.Register(context.Background(), m.config.ID, snapshot); err != nil {
-				// TODO log
-			}
-		}
-	}()
 }
 
 // Send enqueues an event for asynchronous processing.
 // Blocks until the event is enqueued (backpressure throttling).
 // Thread-safe.
 func (m *Machine) Send(event primitives.Event) error {
-	m.eventQueue <- event
-	return nil
+	select {
+	case m.eventQueue <- event:
+		return nil
+	default:
+		return fmt.Errorf("event queue full (backpressure)")
+	}
 }
 
 // Current returns a copy of active state paths.

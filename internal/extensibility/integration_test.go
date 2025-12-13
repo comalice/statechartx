@@ -18,12 +18,19 @@ func TestMachineWithCustomExtensibility(t *testing.T) {
 		States: map[string]*primitives.StateConfig{
 			"running": primitives.NewStateConfig("running", primitives.Atomic).
 				WithOn(map[string][]primitives.TransitionConfig{
-					"TICK": {{
-						Target:   "running",
-						Guard:    "count < 3",
-						Actions:  []primitives.ActionRef{func(ctx *primitives.Context, e primitives.Event) { count++; ctx.Set("count", float64(count)) }},
-						Priority: 1,
-					}},
+					"TICK": {
+						{
+							Target:   "stopped",
+							Guard:    "count >= 3",
+							Priority: 1,
+						},
+						{
+							Target:   "running",
+							Guard:    "count < 3",
+							Actions:  []primitives.ActionRef{func(ctx *primitives.Context, e primitives.Event) { count++; ctx.Set("count", float64(count)) }},
+							Priority: 2,
+						},
+					},
 				}),
 			"stopped": primitives.NewStateConfig("stopped", primitives.Atomic),
 		},
@@ -59,6 +66,7 @@ func TestMachineWithCustomExtensibility(t *testing.T) {
 	// Set initial count for guard test
 	ctx := m.Ctx()
 	ctx.Set("count", float64(0))
+	count = 0  // Reset global for manual tick test
 
 	// Manual tick to test guard/action
 	if err := m.Send(primitives.NewEvent("TICK", nil)); err != nil {
