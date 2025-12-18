@@ -78,3 +78,38 @@ func TestSCXML147(t *testing.T) {
 		t.Error("should reach pass state")
 	}
 }
+
+func TestSCXML148(t *testing.T) {
+	root := &State{ID: "root"}
+	s0 := &State{ID: "s0", Parent: root}
+	pass := &State{ID: "pass", Parent: root}
+	fail := &State{ID: "fail", Parent: root}
+
+	root.Children = map[StateID]*State{
+		"s0":   s0,
+		"pass": pass,
+		"fail": fail,
+	}
+	root.Initial = s0
+
+	s0.Transitions = []*Transition{
+		{Event: "baz", Target: "pass"},
+		{Event: "*", Target: "fail"},
+	}
+
+	rt := NewRuntime(root, nil)
+	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
+		rt.SendEvent(ctx, "baz")
+		rt.SendEvent(ctx, "bat")
+	}
+	ctx := context.Background()
+
+	if err := rt.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Stop(ctx)
+
+	if !rt.IsInState("pass") {
+		t.Error("should reach pass state")
+	}
+}
