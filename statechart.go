@@ -56,6 +56,8 @@ type Runtime struct {
 	ext     any                 // extended state / user context
 	mu      sync.RWMutex
 	running bool
+	eventQueue []Event  // Internal events (synchronous FIFO)
+	processing bool     // Detect recursion/internal calls
 }
 
 // NewRuntime creates a new executable state machine
@@ -64,49 +66,147 @@ func NewRuntime(root *State, extendedContext any) *Runtime {
 		root:    root,
 		current: make(map[*State]struct{}),
 		ext:     extendedContext,
+		eventQueue: []Event{},
+		processing: false,
 	}
 }
 
 // Start enters the initial configuration
 func (r *Runtime) Start(ctx context.Context) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.running {
+		r.mu.Unlock()
 		return fmt.Errorf("already running")
 	}
 	r.running = true
 	r.current = make(map[*State]struct{})
-	return r.enterInitial(ctx, r.root)
+	r.mu.Unlock()
+	if err := r.enterInitial(ctx, r.root); err != nil {
+		return err
+	}
+	r.processMicrosteps(ctx)
+	return nil
 }
 
 // Stop exits all active states
 func (r *Runtime) Stop(ctx context.Context) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if !r.running {
+		r.mu.Unlock()
 		return nil
 	}
+	// Snapshot active states
+	var active []*State
 	for s := range r.current {
-		r.exitState(ctx, s)
+		active = append(active, s)
 	}
 	r.current = make(map[*State]struct{})
 	r.running = false
+	r.mu.Unlock()
+	// Exit unlocked
+	for _, s := range active {
+		r.exitState(ctx, s)
+	}
 	return nil
 }
 
 // SendEvent dispatches an event (thread-safe)
 func (r *Runtime) SendEvent(ctx context.Context, event Event) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if !r.running {
+		r.mu.Unlock()
 		return fmt.Errorf("not running")
 	}
+	if r.processing {
+		r.eventQueue = append(r.eventQueue, event)
+		r.mu.Unlock()
+		return nil
+	}
+	r.mu.Unlock()
 
 	enabled := r.findEnabledTransition(event)
 	if enabled == nil {
-		return nil // ignored
+		return nil
 	}
 
+	source := enabled.source
+	targetState := enabled.targetState
+
+	// Find LCA for proper exit/entry
+	lca := r.findLCA(source, targetState)
+
+	// States to exit (source up to but not including LCA) - tree traversal, lock-free
+	var exitSet []*State
+	cur := source
+	for cur != nil && cur != lca {
+		exitSet = append(exitSet, cur)
+		cur = cur.Parent
+	}
+
+	// Exit bottom-up
+	sort.Slice(exitSet, func(i, j int) bool {
+		return len(r.ancestors(exitSet[i])) > len(r.ancestors(exitSet[j]))
+	})
+	for _, s := range exitSet {
+		r.exitState(ctx, s)
+	}
+
+	// Transition action unlocked
+	if enabled.Action != nil {
+		enabled.Action(ctx, event, source.ID, enabled.Target, r.ext)
+	}
+
+	// Enter target configuration
+	if err := r.enterState(ctx, targetState); err != nil {
+		return err
+	}
+	r.processMicrosteps(ctx)
+	return nil
+}
+
+// IsInState returns true if the state (or any descendant) is active
+func (r *Runtime) IsInState(id StateID) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	target := r.findStateByID(r.root, id)
+	if target == nil {
+		return false
+	}
+	if _, ok := r.current[target]; ok {
+		return true
+	}
+	for s := range r.current {
+		if r.isDescendant(s, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Runtime) processMicrosteps(ctx context.Context) {
+	for {
+		r.mu.Lock()
+		if len(r.eventQueue) == 0 {
+			r.mu.Unlock()
+			break
+		}
+		ev := r.eventQueue[0]
+		r.eventQueue = r.eventQueue[1:]
+		r.mu.Unlock()
+		r.processing = true
+		if err := r.processSingleEvent(ctx, ev); err != nil {
+			// Ignore for conformance
+		}
+		r.processing = false
+	}
+}
+
+func (r *Runtime) processSingleEvent(ctx context.Context, ev Event) error {
+	enabled := r.findEnabledTransition(ev)
+	if enabled == nil {
+		return nil
+	}
 	source := enabled.source
 	targetState := enabled.targetState
 
@@ -129,33 +229,17 @@ func (r *Runtime) SendEvent(ctx context.Context, event Event) error {
 		r.exitState(ctx, s)
 	}
 
-	// Transition action
+	// Transition action unlocked
 	if enabled.Action != nil {
-		enabled.Action(ctx, event, source.ID, enabled.Target, r.ext)
+		enabled.Action(ctx, ev, source.ID, enabled.Target, r.ext)
 	}
 
 	// Enter target configuration
-	return r.enterState(ctx, targetState)
-}
-
-// IsInState returns true if the state (or any descendant) is active
-func (r *Runtime) IsInState(id StateID) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	target := r.findStateByID(r.root, id)
-	if target == nil {
-		return false
+	if err := r.enterState(ctx, targetState); err != nil {
+		return err
 	}
-	if _, ok := r.current[target]; ok {
-		return true
-	}
-	for s := range r.current {
-		if r.isDescendant(s, target) {
-			return true
-		}
-	}
-	return false
+	r.processMicrosteps(ctx)
+	return nil
 }
 
 // RunAsActor runs the machine in its own goroutine, driven by an input channel
@@ -193,6 +277,8 @@ type enabledTransition struct {
 }
 
 func (r *Runtime) findEnabledTransition(event Event) *enabledTransition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	active := r.activeStatesOrdered() // deepest first
 
 	for i := len(active) - 1; i >= 0; i-- {
@@ -217,6 +303,8 @@ func (r *Runtime) findEnabledTransition(event Event) *enabledTransition {
 }
 
 func (r *Runtime) activeStatesOrdered() []*State {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var list []*State
 	for s := range r.current {
 		list = append(list, s)
@@ -273,33 +361,56 @@ func (r *Runtime) enterInitial(ctx context.Context, composite *State) error {
 }
 
 func (r *Runtime) enterState(ctx context.Context, s *State) error {
+	r.mu.Lock()
 	r.current[s] = struct{}{}
+	r.mu.Unlock()
 	if s.OnEntry != nil {
 		s.OnEntry(ctx, nil, "", s.ID, r.ext)
 	}
 	if len(s.Children) > 0 {
 		if s.History != nil {
-			return r.enterState(ctx, s.History)
+			err := r.enterState(ctx, s.History)
+			if err != nil {
+				return err
+			}
+		} else {
+			err := r.enterInitial(ctx, s)
+			if err != nil {
+				return err
+			}
 		}
-		return r.enterInitial(ctx, s)
 	}
 	return nil
 }
 
 func (r *Runtime) exitState(ctx context.Context, s *State) error {
-	// Exit children first
+	// Collect children under RLock for snapshot
+	var children []*State
+	r.mu.RLock()
 	for child := range r.current {
 		if child.Parent == s {
-			r.exitState(ctx, child)
+			children = append(children, child)
 		}
 	}
+	r.mu.RUnlock()
+	// Exit children recursively (unlocked)
+	for _, child := range children {
+		r.exitState(ctx, child)
+	}
+	// Delete from current under lock
+	r.mu.Lock()
+	delete(r.current, s)
+	r.mu.Unlock()
+	// OnExit unlocked (safe for callbacks)
 	if s.OnExit != nil {
 		s.OnExit(ctx, nil, s.ID, "", r.ext)
 	}
+	// History under lock
+	r.mu.Lock()
 	if s.Parent != nil {
 		s.Parent.History = s
 	}
-	delete(r.current, s)
+	r.mu.Unlock()
 	return nil
 }
 
