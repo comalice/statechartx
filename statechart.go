@@ -51,21 +51,21 @@ type Transition struct {
 
 // Runtime executes one state machine instance
 type Runtime struct {
-	root    *State
-	current map[*State]struct{} // active states
-	ext     any                 // extended state / user context
-	mu      sync.RWMutex
-	running bool
-	eventQueue []Event  // Internal events (synchronous FIFO)
-	processing bool     // Detect recursion/internal calls
+	root       *State
+	current    map[*State]struct{} // active states
+	ext        any                 // extended state / user context
+	mu         sync.RWMutex
+	running    bool
+	eventQueue []Event // Internal events (synchronous FIFO)
+	processing bool    // Detect recursion/internal calls
 }
 
 // NewRuntime creates a new executable state machine
 func NewRuntime(root *State, extendedContext any) *Runtime {
 	return &Runtime{
-		root:    root,
-		current: make(map[*State]struct{}),
-		ext:     extendedContext,
+		root:       root,
+		current:    make(map[*State]struct{}),
+		ext:        extendedContext,
 		eventQueue: []Event{},
 		processing: false,
 	}
@@ -164,6 +164,19 @@ func (r *Runtime) SendEvent(ctx context.Context, event Event) error {
 	return nil
 }
 
+// Raise enqueues an event at the front of the event queue.
+func (r *Runtime) Raise(ctx context.Context, event Event) error {
+	r.mu.Lock()
+	if !r.running {
+		r.mu.Unlock()
+		return fmt.Errorf("not running")
+	}
+	// Prepend to queue for internal priority
+	r.eventQueue = append([]Event{event}, r.eventQueue...)
+	r.mu.Unlock()
+	return nil
+}
+
 // IsInState returns true if the state (or any descendant) is active
 func (r *Runtime) IsInState(id StateID) bool {
 	r.mu.RLock()
@@ -199,6 +212,15 @@ func (r *Runtime) processMicrosteps(ctx context.Context) {
 			// Ignore for conformance
 		}
 		r.processing = false
+	}
+
+	// Process eventless / completion transitions until stable.
+	for {
+		enabled := r.findEnabledTransition(nil) // check only eventless transitions
+		if enabled == nil {
+			break
+		}
+		_ = r.processSingleEvent(ctx, nil)
 	}
 }
 
@@ -284,7 +306,7 @@ func (r *Runtime) findEnabledTransition(event Event) *enabledTransition {
 	for i := len(active) - 1; i >= 0; i-- {
 		s := active[i]
 		for _, t := range s.Transitions {
-			if t.Event == event {
+			if t.Event == event || (t.Event == nil && event == nil) { // Match normal event or eventless transition
 				if t.Guard == nil || t.Guard(context.Background(), event, s.ID, t.Target, r.ext) {
 					target := r.findStateByID(r.root, t.Target)
 					if target != nil {

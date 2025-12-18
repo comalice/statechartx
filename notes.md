@@ -1,0 +1,6 @@
+- default datamodel?
+- example guards/actions specifically for test?
+- helpers/builder API for better UX?
+- perf testing on critical paths
+- go back through and implement
+  - guard, action, event, parallel state tests using test shims where necessary (make test guards and actions, make test events, do use the hierarchy to handle parallel states)
