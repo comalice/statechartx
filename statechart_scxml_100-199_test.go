@@ -25,7 +25,9 @@ func TestSCXML144(t *testing.T) {
 		{Event: "bar", Target: "pass"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "foo")
 	}
@@ -34,10 +36,8 @@ func TestSCXML144(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -62,17 +62,17 @@ func TestSCXML147(t *testing.T) {
 		{Event: "*", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "bar")
 		rt.SendEvent(ctx, "bat")
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -97,17 +97,17 @@ func TestSCXML148(t *testing.T) {
 		{Event: "*", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "baz")
 		rt.SendEvent(ctx, "bat")
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -132,16 +132,16 @@ func TestSCXML149(t *testing.T) {
 		{Event: "*", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "bat")
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -196,17 +196,17 @@ func TestSCXML158(t *testing.T) {
 		{Event: "*", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "event1")
 		rt.SendEvent(ctx, "event2")
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")

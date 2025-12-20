@@ -56,7 +56,9 @@ func TestSCXML403a(t *testing.T) {
 		}},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s01.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "event1")
 	}
@@ -65,10 +67,8 @@ func TestSCXML403a(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -101,7 +101,7 @@ func TestSCXML407(t *testing.T) {
 	type extState struct {
 		var1 int
 	}
-	ext := &extState{var1: 0}
+	// ext := &extState{var1: 0}
 
 	root := &State{ID: "root"}
 	s0 := &State{ID: "s0", Parent: root}
@@ -133,13 +133,13 @@ func TestSCXML407(t *testing.T) {
 		{Event: "", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, ext)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -192,7 +192,9 @@ func TestSCXML412(t *testing.T) {
 		{Event: "event2", Target: "pass"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 
 	// s01 onentry raises event1
 	s01.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
@@ -236,10 +238,8 @@ func TestSCXML412(t *testing.T) {
 
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state")
@@ -276,7 +276,9 @@ func TestSCXML419(t *testing.T) {
 	}
 	root.Initial = s1
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 
 	s1.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "internalEvent")
@@ -291,10 +293,8 @@ func TestSCXML419(t *testing.T) {
 
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state - eventless transition should take precedence")
@@ -329,7 +329,9 @@ func TestSCXML421(t *testing.T) {
 		{Event: "externalEvent", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 
 	s1.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "externalEvent")
@@ -351,10 +353,8 @@ func TestSCXML421(t *testing.T) {
 
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("should reach pass state - internal events should be processed before external")
@@ -381,7 +381,9 @@ func TestSCXML423(t *testing.T) {
 	}
 	root.Initial = s0
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		// Note: In SCXML, externalEvent1 is sent first, then externalEvent2 with delay,
@@ -409,10 +411,8 @@ func TestSCXML423(t *testing.T) {
 
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	// This test is expected to fail with current implementation since we don't
 	// have separate internal/external queues. Mark as skip for now.

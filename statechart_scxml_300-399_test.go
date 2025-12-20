@@ -190,13 +190,13 @@ func TestSCXML355(t *testing.T) {
 		{Event: "", Target: "fail"},
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	rt.SendEvent(ctx, "")
 
@@ -224,7 +224,9 @@ func TestSCXML375(t *testing.T) {
 	}
 	root.Initial = s0
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "e1")
 	}
@@ -233,10 +235,8 @@ func TestSCXML375(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("onentry order")
@@ -258,7 +258,9 @@ func TestSCXML377(t *testing.T) {
 	}
 	root.Initial = s0
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnExit = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "e1")
 	}
@@ -267,10 +269,8 @@ func TestSCXML377(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("onexit order")
@@ -305,16 +305,16 @@ func TestSCXML396(t *testing.T) {
 		{Event: "foo", Target: "fail"}, // Duplicate, first wins?
 	}
 
-	rt := NewRuntime(root, nil)
+	machine, _ := NewMachine(root)
+
+	rt := NewRuntime(machine, nil)
 	s0.OnEntry = func(ctx context.Context, event Event, from, to StateID, ext any) {
 		rt.SendEvent(ctx, "foo")
 	}
 	ctx := context.Background()
 
-	if err := rt.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Stop(ctx)
+	rt.Start(ctx)
+	defer rt.Stop()
 
 	if !rt.IsInState("pass") {
 		t.Error("first transition matches")

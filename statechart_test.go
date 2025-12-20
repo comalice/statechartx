@@ -1,167 +1,142 @@
-package statechartx
+package statechartx_test
 
 import (
 	"context"
 	"testing"
-	"time"
+
+	. "github.com/comalice/statechartx"
 )
 
-func TestNewRuntime_Start_Stop_IsInState(t *testing.T) {
-	root := &State{ID: "root"}
-	child := &State{ID: "child", Parent: root}
-	root.Children = map[StateID]*State{"child": child}
-	root.Initial = child
+// Test internal transition does transition: basic internal transition executes action, no state change.
+func TestInternalTransitionDoesTransition(t *testing.T) {
+	var actionCalled int
 
-	rt := NewRuntime(root, nil)
-	ctx := context.Background()
+	action := Action(func(ctx context.Context, evt *Event, from, to StateID) error {
+		actionCalled++
+		return nil
+	})
 
-	if err := rt.Start(ctx); err != nil {
+	s := &State{ID: 1}
+	e := Event{ID: 1}
+	s.On(e, nil, nil, &action)
+
+	m, err := NewMachine(s)
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Stop(ctx)
 
-	if !rt.IsInState("root") {
-		t.Error("should be in root")
-	}
-	if !rt.IsInState("child") {
-		t.Error("should be in child")
-	}
-	if rt.IsInState("nonexistent") {
-		t.Error("should not be in nonexistent")
-	}
-}
-
-func TestSendEvent_SimpleTransition(t *testing.T) {
-	root := &State{ID: "root"}
-	idle := &State{ID: "idle", Parent: root}
-	active := &State{ID: "active", Parent: root}
-	root.Children = map[StateID]*State{"idle": idle, "active": active}
-	root.Initial = idle
-
-	idle.Transitions = []*Transition{
-		{Event: "activate", Target: "active"},
-	}
-
-	rt := NewRuntime(root, nil)
 	ctx := context.Background()
-
-	if err := rt.Start(ctx); err != nil {
+	if err := m.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Stop(ctx)
 
-	if rt.IsInState("active") {
-		t.Error("should not start in active")
+	m.Send(ctx, e)
+
+	if actionCalled != 1 {
+		t.Errorf("expected action called 1 time, got %d", actionCalled)
 	}
-
-	rt.SendEvent(ctx, "activate")
-
-	if !rt.IsInState("active") {
-		t.Error("should transition to active")
+	if m.current.ID != 1 {
+		t.Errorf("expected state unchanged (ID=1), got %d", m.current.ID)
 	}
 }
 
-func TestSendEvent_Guard(t *testing.T) {
-	guardCtx := make(chan context.Context, 1)
-	var guardCalls int
-	guard := func(ctx context.Context, event Event, from, to StateID, ext any) bool {
-		guardCtx <- ctx
-		guardCalls++
-		return false // always block
+// Test internal transition only execs action: verifies no entry/exit called.
+func TestInternalTransitionExecsActionOnly(t *testing.T) {
+	var actionCalled, entryCalled, exitCalled int
+
+	action := Action(func(ctx context.Context, evt *Event, from, to StateID) error {
+		actionCalled++
+		return nil
+	})
+	entryAction := Action(func(ctx context.Context, evt *Event, from, to StateID) error {
+		entryCalled++
+		return nil
+	})
+	exitAction := Action(func(ctx context.Context, evt *Event, from, to StateID) error {
+		exitCalled++
+		return nil
+	})
+
+	s := &State{
+		ID:          1,
+		EntryAction: entryAction,
+		ExitAction:  exitAction,
 	}
+	e := Event{ID: 1}
+	s.On(e, nil /* target nil for internal */, nil, &action)
 
-	root := &State{ID: "root"}
-	idle := &State{ID: "idle", Parent: root}
-	active := &State{ID: "active", Parent: root}
-	root.Children = map[StateID]*State{"idle": idle, "active": active}
-	root.Initial = idle
-
-	idle.Transitions = []*Transition{
-		{Event: "activate", Target: "active", Guard: guard},
-	}
-
-	rt := NewRuntime(root, nil)
-	ctx := context.Background()
-
-	if err := rt.Start(ctx); err != nil {
+	m, err := NewMachine(s)
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Stop(ctx)
 
-	rt.SendEvent(ctx, "activate")
-
-	if rt.IsInState("active") {
-		t.Error("guard should prevent transition")
-	}
-
-	if guardCalls != 1 {
-		t.Error("guard not called")
-	}
-}
-
-func TestHierarchy_EntryExitOrder(t *testing.T) {
-	// Simple hierarchy test would need entry/exit actions logging order
-	// Implemented via counters or logs, but for brevity, test IsInState changes
-	t.Skip("Requires action logging for full order verification")
-}
-
-func TestHistory_Shallow(t *testing.T) {
-	root := &State{ID: "root"}
-	choice := &State{ID: "choice", Parent: root}
-	a := &State{ID: "a", Parent: choice}
-	b := &State{ID: "b", Parent: choice}
-	root.Children = map[StateID]*State{"choice": choice}
-	root.Initial = choice
-	choice.Initial = a
-	choice.Children = map[StateID]*State{"a": a, "b": b}
-
-	a.Transitions = []*Transition{{Event: "toB", Target: "b"}}
-
-	rt := NewRuntime(root, nil)
 	ctx := context.Background()
+	if err := m.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
-	rt.Start(ctx)
-	rt.SendEvent(ctx, "toB") // transition from choice to b
-	rt.Stop(ctx)
+	if entryCalled != 1 {
+		t.Errorf("expected entry called 1 time after Start, got %d", entryCalled)
+	}
+	if exitCalled != 0 {
+		t.Errorf("expected exit called 0 times after Start, got %d", exitCalled)
+	}
+	if m.current.ID != 1 {
+		t.Errorf("expected current state ID 1 after Start")
+	}
 
-	// Restart should restore history to b
-	rt.Start(ctx)
-	defer rt.Stop(ctx)
+	m.Send(ctx, e)
 
-	if !rt.IsInState("b") {
-		t.Error("should restore shallow history to b")
+	if actionCalled != 1 {
+		t.Errorf("expected action called 1 time, got %d", actionCalled)
+	}
+	if entryCalled != 1 {
+		t.Errorf("expected entry called 1 time total (no re-entry), got %d", entryCalled)
+	}
+	if exitCalled != 0 {
+		t.Errorf("expected exit called 0 times (no exit), got %d", exitCalled)
+	}
+	if m.current.ID != 1 {
+		t.Errorf("expected still in state 1")
 	}
 }
 
-func TestRunAsActor(t *testing.T) {
-	root := &State{ID: "root"}
-	idle := &State{ID: "idle", Parent: root}
-	active := &State{ID: "active", Parent: root}
-	root.Children = map[StateID]*State{"idle": idle, "active": active}
-	root.Initial = idle
+func TestInternalPicksFirstEnabledTransition(t *testing.T) {
+	var action1Called, action2Called int
 
-	idle.Transitions = []*Transition{{Event: "ping", Target: "active"}}
+	guardFalse := Guard(func(ctx context.Context, evt *Event, from, to StateID) (bool, error) {
+		return false, nil
+	})
+	action1 := Action(func(ctx context.Context, evt *Event, from, to StateID) error {
+		action1Called++
+		return nil
+	})
+	action2 := Action(func(ctx context.Context, evt *Event, from, to StateID) error {
+		action2Called++
+		return nil
+	})
 
-	rt := NewRuntime(root, nil)
-	events := make(chan Event, 10)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	s := &State{ID: 1}
+	e := Event{ID: 1}
+	s.On(e, nil, &guardFalse, &action1)
+	s.On(e, nil, nil /* guard true */, &action2)
 
-	go rt.RunAsActor(ctx, events)
-
-	events <- "ping"
-	close(events)
-
-	// Give time for processing
-	time.Sleep(50 * time.Millisecond)
-
-	if rt.IsInState("idle") {
-		t.Error("should have transitioned")
+	m, err := NewMachine(s)
+	if err != nil {
+		t.Fatal(err)
 	}
-}
 
-func TestConcurrentSendEvents(t *testing.T) {
-	// Basic concurrency test; race detector will catch issues
-	// Relies on -race flag
-	t.Skip("Run with go test -race")
+	ctx := context.Background()
+	m.Start(ctx)
+	m.Send(ctx, e)
+
+	if action1Called != 0 {
+		t.Error("first action (guard false) should not be called")
+	}
+	if action2Called != 1 {
+		t.Error("second action (guard true) should be called")
+	}
+	if m.current.ID != 1 {
+		t.Errorf("expected still in state 1, got %d", m.current.ID)
+	}
 }
