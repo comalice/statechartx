@@ -1,0 +1,26 @@
+File: statechartx.test
+Type: alloc_space
+Time: Jan 2, 2026 at 8:05am (UTC)
+Showing nodes accounting for 1893.12MB, 99.37% of 1905.12MB total
+Dropped 18 nodes (cum <= 9.53MB)
+      flat  flat%   sum%        cum   cum%
+ 1342.55MB 70.47% 70.47%  1342.55MB 70.47%  github.com/comalice/statechartx.NewRuntime (inline)
+  199.52MB 10.47% 80.94%  1789.60MB 93.94%  github.com/comalice/statechartx.BenchmarkMemoryAllocation
+   80.01MB  4.20% 85.14%   125.52MB  6.59%  github.com/comalice/statechartx.NewMachine
+   67.02MB  3.52% 88.66%    73.52MB  3.86%  github.com/comalice/statechartx.(*Runtime).recordHistory
+   45.51MB  2.39% 91.05%    45.51MB  2.39%  github.com/comalice/statechartx.NewMachine.func1
+   38.50MB  2.02% 93.07%    38.50MB  2.02%  github.com/comalice/statechartx.(*Runtime).pickTransition
+      37MB  1.94% 95.01%       37MB  1.94%  context.(*cancelCtx).Done
+      33MB  1.73% 96.75%       33MB  1.73%  context.WithCancel
+   15.50MB  0.81% 97.56%    48.50MB  2.55%  github.com/comalice/statechartx.(*Runtime).processMicrosteps
+      11MB  0.58% 98.14%       46MB  2.41%  github.com/comalice/statechartx.(*Runtime).enterInitialState
+   10.50MB  0.55% 98.69%    10.50MB  0.55%  github.com/comalice/statechartx.(*Runtime).getAncestors (inline)
+       7MB  0.37% 99.06%   112.02MB  5.88%  github.com/comalice/statechartx.(*Runtime).processEvent
+       6MB  0.31% 99.37%       85MB  4.46%  github.com/comalice/statechartx.(*Runtime).Start
+         0     0% 99.37%       37MB  1.94%  github.com/comalice/statechartx.(*Runtime).SendEvent
+         0     0% 99.37%    10.50MB  0.55%  github.com/comalice/statechartx.(*Runtime).computeLCA
+         0     0% 99.37%   112.02MB  5.88%  github.com/comalice/statechartx.(*Runtime).eventLoop
+         0     0% 99.37%    73.52MB  3.86%  github.com/comalice/statechartx.(*Runtime).exitToLCA
+         0     0% 99.37%    38.50MB  2.02%  github.com/comalice/statechartx.(*Runtime).pickTransitionHierarchical
+         0     0% 99.37%  1789.60MB 93.94%  testing.(*B).launch
+         0     0% 99.37%  1789.60MB 93.94%  testing.(*B).runN

@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: github.com/comalice/statechartx
+cpu: AMD EPYC 9R14
+BenchmarkStateTransition-8          	11614573	       512.3 ns/op
+BenchmarkEventSending-8             	30090399	       199.7 ns/op
+BenchmarkLCAComputation-8           	157023142	        38.03 ns/op
+BenchmarkLCAComputationDeep-8       	 1326823	      4532 ns/op
+BenchmarkParallelRegionSpawn-8      	  295216	     20687 ns/op
+BenchmarkParallelRegionSpawn100-8   	   38433	    155517 ns/op
+BenchmarkEventRouting-8             	 1978200	      3036 ns/op
+BenchmarkHistoryRestoration-8       	12975996	       455.6 ns/op
+BenchmarkStateCreation-8            	  647929	      9267 ns/op
+BenchmarkTransitionCreation-8       	  823050	     12750 ns/op
+BenchmarkComplexStatechart-8        	

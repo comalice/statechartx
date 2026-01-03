@@ -1,19 +1,18 @@
-READ A FILE BEFORE ATTEMPTING TO EDIT
-
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-**statechartx** is a minimal, composable, concurrent-ready hierarchical state machine implementation in Go (~520 LOC). It provides:
+**statechartx** is a minimal, composable, concurrent-ready hierarchical state machine implementation in Go (~1,333 LOC). It provides:
 
 - Hierarchical state nesting with proper entry/exit order
-- Initial states and shallow history support
+- Initial states and shallow/deep history support
 - Guarded transitions with actions
 - Thread-safe event dispatch via `sync.RWMutex`
 - Explicit composition for concurrent state machines via goroutines/channels
-- No built-in parallel regions; parallelism achieved through composition
+- Parallel state support with independent region execution
+- Real-time deterministic runtime for games, physics, and robotics
 
 ## Key Architecture
 
@@ -22,28 +21,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **State**: Hierarchical state node with ID, parent/children, transitions, initial/history states, entry/exit actions
 - **Runtime**: Executable state machine instance managing active state configuration, thread-safe event processing
 - **Transition**: Event-triggered edges with optional guards and actions
-- **Event**: Any comparable Go type used to trigger transitions
+- **Event**: Struct with ID, data, and optional address for targeted delivery to parallel regions
+- **Machine**: CompoundState wrapper with helper functions for chart evaluation
 
 ### Key Concepts
 
-1. **Hierarchical State Management**: States form a tree. `Runtime.current` tracks all active states (compound states + their active leaf descendants).
+1. **Hierarchical State Management**: States form a tree. `Runtime.current` (or active configuration) tracks all active states (compound states + their active leaf descendants).
 
 2. **Entry/Exit Order**: Transitions compute LCA (Lowest Common Ancestor) to exit states bottom-up and enter states top-down, preserving SCXML-like semantics.
 
-3. **History**: Shallow history only. Parent states remember their last active child via `State.History`.
+3. **History States**: Both shallow and deep history supported. Parent states remember their last active child/descendants via history mechanism.
 
-4. **Concurrency Model**: Single `Runtime` uses mutex for thread-safe `SendEvent`. For orthogonal regions, run multiple `Runtime` instances via `RunAsActor()` in separate goroutines.
+4. **Parallel States**: States marked with `IsParallel: true` spawn independent regions that execute concurrently. Each region runs in its own goroutine with separate event channels.
 
-5. **Extended State**: User context passed to all actions/guards via `ext any` parameter for application-specific data.
+5. **Concurrency Model**: Single `Runtime` uses mutex for thread-safe `SendEvent`. For orthogonal regions in parallel states, the runtime manages multiple goroutines internally. For completely independent state machines, run multiple `Runtime` instances.
+
+6. **Extended State**: User context passed to all actions/guards via function parameters for application-specific data.
 
 ### File Structure
 
 ```
-statechart.go              - Core state machine implementation
-statechart_test.go         - Unit tests for basic functionality
-statechart_scxml_tests.go  - SCXML conformance tests (currently empty)
-cmd/scxml_dowloader/       - Utility to download W3C SCXML test suite
-pkg/scxml_test_suite/      - Downloaded SCXML test files from W3C
+statechart.go                  - Core state machine implementation (~1,333 lines)
+statechart_test.go             - Unit tests for basic functionality
+statechart_scxml_*_test.go     - SCXML conformance tests (grouped by test number ranges)
+statechart_*_test.go           - Specialized tests (parallel, history, done events, stress, etc.)
+realtime/                      - Tick-based deterministic runtime (~230 lines)
+  runtime.go                   - RealtimeRuntime implementation
+  event.go, tick.go           - Event batching and tick management
+  README.md                    - Real-time runtime documentation
+builder/                       - Fluent builder API (functional options pattern)
+  helpers.go                   - Builder implementation
+  README.md                    - Builder documentation
+testutil/                      - Test utilities and adapters
+examples/                      - Example implementations
+  realtime/                    - Game loop, physics sim, replay examples
+benchmarks/                    - Performance benchmarking
+cmd/
+  scxml_dowloader/             - Downloads W3C SCXML test suite
+  examples/basic/              - Basic usage example
+doc/                          - Design docs, implementation summaries, performance reports
 ```
 
 ## Development Commands
@@ -56,8 +72,9 @@ go build ./...
 ### Testing
 ```bash
 make test           # Run all tests
-make test-race      # Run with race detector (recommended)
+make test-race      # Run with race detector (STRONGLY RECOMMENDED for parallel state work)
 go test -v ./...    # Verbose test output
+go test -v -run TestName ./...  # Run specific test
 ```
 
 ### Test Coverage
@@ -104,8 +121,8 @@ go run cmd/scxml_dowloader/main.go --filepath ./tests
 
 The project includes a custom skill (`scxml-translator`) for translating W3C SCXML test cases into Go unit tests:
 
-- **Test Source**: `pkg/scxml_test_suite/[num]/test*.txml` files from W3C SCXML IRP
-- **Target**: Generate tests in `statechart_scxml_tests.go`
+- **Test Source**: W3C SCXML IRP test suite (downloaded via scxml_dowloader)
+- **Target**: Generate tests in `statechart_scxml_*_test.go` files (grouped by test number ranges)
 - **Approach**: Map SCXML `<state>`, `<transition>`, `<onentry>` to equivalent Go `State` trees
 - **Validation**: Use `conf:pass` states to assert correct final configuration
 
@@ -113,97 +130,193 @@ The project includes a custom skill (`scxml-translator`) for translating W3C SCX
 
 | SCXML Element | statechartx Equivalent |
 |---------------|------------------------|
-| `<state id="s1">` | `&State{ID: "s1"}` |
-| `<transition event="e" target="s2"/>` | `Transitions: []*Transition{{Event: "e", Target: "s2"}}` |
-| `<onentry><raise event="foo"/></onentry>` | `OnEntry: func(ctx, _, _, _, _) { rt.SendEvent(ctx, "foo") }` |
-| `<initial>` attribute | `Initial: statePtr` |
-| `conf:pass` final state | `rt.IsInState("pass")` assertion |
+| `<state id="s1">` | `&State{ID: StateID(hashString("s1"))}` |
+| `<transition event="e" target="s2"/>` | `Transitions: []*Transition{{Event: EventID(hashString("e")), Target: StateID(hashString("s2"))}}` |
+| `<onentry><raise event="foo"/></onentry>` | `EntryAction: func(ctx, evt, from, to) error { return rt.SendEvent(ctx, Event{ID: EventID(hashString("foo"))}) }` |
+| `initial="s0"` attribute | `Initial: StateID(hashString("s0"))` |
+| `conf:pass` final state | Assert `rt.IsInState(StateID(hashString("pass")))` |
 
 ### Limitations
 
-- Shallow history only (no deep history)
 - No datamodel/ECMAScript expressions (stub guards where needed)
-- No `<invoke>`, `<send>`, or external communication
-- Batch 10-20 tests per file for maintainability
+- No `<invoke>`, `<send>`, or external communication beyond internal event raising
+- Tests grouped in files by number ranges (100-199, 200-299, etc.) for maintainability
 
 ## Code Patterns
 
 ### Creating a State Machine
 
 ```go
-root := &State{ID: "root"}
-idle := &State{ID: "idle", Parent: root}
-active := &State{ID: "active", Parent: root}
-root.Children = map[StateID]*State{"idle": idle, "active": active}
-root.Initial = idle
+import "github.com/comalice/statechartx"
+
+// Using raw State construction
+root := &State{ID: 1}
+idle := &State{ID: 2, Parent: root}
+active := &State{ID: 3, Parent: root}
+root.Children = map[StateID]*State{2: idle, 3: active}
+root.Initial = 2
 
 idle.Transitions = []*Transition{
-    {Event: "activate", Target: "active"},
+    {Event: 10, Target: 3},  // "activate" event
 }
 
-rt := NewRuntime(root, nil)
+machine, err := NewMachine(root)
+if err != nil {
+    log.Fatal(err)
+}
+
+rt := NewRuntime(machine, nil)
 ctx := context.Background()
 rt.Start(ctx)
-rt.SendEvent(ctx, "activate")
+rt.SendEvent(ctx, Event{ID: 10})
 ```
 
-### Concurrent State Machines (Orthogonal Regions)
+### Using the Builder API
 
 ```go
-// Create two independent state machines
-rt1 := NewRuntime(region1Root, nil)
-rt2 := NewRuntime(region2Root, nil)
+import "github.com/comalice/statechartx/builder"
 
-// Run as actors with event channels
-events1 := make(chan Event, 10)
-events2 := make(chan Event, 10)
+// Fluent builder with functional options
+idle := builder.New("IDLE",
+    builder.WithEntry(func(ctx context.Context, evt *Event, from, to StateID) error {
+        log.Println("Entering IDLE")
+        return nil
+    }),
+    builder.On("START", "RUNNING"),
+)
 
-go rt1.RunAsActor(ctx, events1)
-go rt2.RunAsActor(ctx, events2)
+root := builder.Composite("ROOT",
+    idle,
+    builder.New("RUNNING",
+        builder.On("STOP", "IDLE"),
+        builder.On("ERROR", "FAULT", builder.WithGuard(isRecoverable)),
+    ),
+)
+```
 
-// Send events to each region
-events1 <- "event1"
-events2 <- "event2"
+### Parallel States
+
+```go
+// Create a parallel state with multiple concurrent regions
+parallel := &State{
+    ID:         1,
+    IsParallel: true,
+    Children:   make(map[StateID]*State),
+}
+
+// Add independent regions
+region1 := &State{ID: 10, Parent: parallel, Initial: 11}
+region2 := &State{ID: 20, Parent: parallel, Initial: 21}
+parallel.Children[10] = region1
+parallel.Children[20] = region2
+
+// Runtime automatically manages region goroutines and synchronization
+machine, _ := NewMachine(parallel)
+rt := NewRuntime(machine, nil)
+rt.Start(ctx)
+
+// Events can be broadcast or targeted to specific regions
+rt.SendEvent(ctx, Event{ID: 100})                    // Broadcast to all regions
+rt.SendEvent(ctx, Event{ID: 100, Address: 10})       // Target region1 only
 ```
 
 ### Guards and Actions
 
 ```go
 transition := &Transition{
-    Event: "submit",
-    Target: "validated",
-    Guard: func(ctx context.Context, event Event, from, to StateID, ext any) bool {
-        // Access extended state for decision logic
-        data := ext.(*MyData)
-        return data.IsValid()
+    Event:  100,
+    Target: 5,
+    Guard: func(ctx context.Context, evt *Event, from, to StateID) (bool, error) {
+        // Access event data for decision logic
+        if data, ok := evt.Data.(*MyData); ok {
+            return data.IsValid(), nil
+        }
+        return false, nil
     },
-    Action: func(ctx context.Context, event Event, from, to StateID, ext any) {
+    Action: func(ctx context.Context, evt *Event, from, to StateID) error {
         // Perform side effects during transition
-        log.Printf("Transitioning from %s to %s", from, to)
+        log.Printf("Transitioning from %d to %d", from, to)
+        return nil
     },
 }
+```
+
+### Real-Time Deterministic Runtime
+
+```go
+import "github.com/comalice/statechartx/realtime"
+
+// Create tick-based runtime for games/physics (60 FPS)
+machine, _ := statechartx.NewMachine(rootState)
+
+rt := realtime.NewRuntime(machine, realtime.Config{
+    TickRate:         16667 * time.Microsecond, // 60 FPS
+    MaxEventsPerTick: 1000,
+})
+
+ctx := context.Background()
+rt.Start(ctx)
+defer rt.Stop()
+
+// Send events (non-blocking, batched for next tick)
+rt.SendEvent(statechartx.Event{ID: 1})
+
+// Query state (reads from last completed tick - deterministic)
+currentState := rt.GetCurrentState()
+tickNum := rt.GetTickNumber()
 ```
 
 ## Testing Strategy
 
 1. **Unit Tests** (`statechart_test.go`): Core Runtime behavior, transitions, guards, history
-2. **Race Detection**: Always use `go test -race` or `make test-race` for concurrency validation
-3. **SCXML Conformance**: Translate W3C test suite to verify standards compliance
-4. **Benchmarks**: Performance testing for transition speed and memory allocation
+2. **Parallel Tests** (`statechart_parallel_test.go`, `statechart_nested_parallel_test.go`): Concurrent region execution
+3. **Race Detection**: **ALWAYS use `make test-race`** for parallel state work - this is critical
+4. **SCXML Conformance**: W3C test suite translation validates standards compliance
+5. **Stress Tests** (`statechart_stress_test.go`): High load and concurrent access validation
+6. **Benchmarks**: Performance testing for transition speed and memory allocation
+
+## Real-Time Runtime
+
+The `realtime` package provides a tick-based deterministic runtime ideal for:
+
+- **Game engines** - Fixed 60 FPS game logic
+- **Physics simulations** - Deterministic time-step integration
+- **Robotics** - Predictable control loops
+- **Testing & debugging** - Reproducible scenarios
+
+Key differences from event-driven runtime:
+- Events batched and processed at fixed tick intervals
+- Guaranteed deterministic execution order
+- Higher latency (~16.67ms @ 60 FPS) but predictable
+- Lower throughput (~60K events/sec @ 60 FPS) vs event-driven (~2M events/sec)
+- No goroutines per region - sequential processing for determinism
+
+See `realtime/README.md` for detailed API and examples.
 
 ## Custom Skills Available
 
 - **golang-development**: Go best practices, testing guidance, fuzzing reference
 - **scxml-translator**: SCXML test suite translation to Go tests
 - **context-gathering**: Codebase exploration for large projects
+- **skill-builder**: Creating new custom skills
 
-## Tool Usage: Write for Full File Replacement (When Edit Fails)
+## Important Implementation Details
 
-**Problem**: Edit tool requires *exact* string match including whitespace/tabs/newlines. Failures like "String to replace not found" occur due to Read output formatting (e.g., `\t` indents).
+### State ID System
+States and events use numeric IDs (`StateID` and `EventID` are `int` types). For SCXML tests, string names are hashed to IDs using `hashString()` helper function.
 
-**Solution**: Read file → reconstruct full content → Write entire file.
+### Parallel State Execution
+- Each region in a parallel state runs in its own goroutine
+- Regions communicate via channels managed by the runtime
+- Region lifecycle (start/stop) is managed automatically
+- Timeouts protect against deadlocks (configurable via DefaultEntryTimeout, DefaultExitTimeout, etc.)
+- **CRITICAL**: Always test parallel states with race detector (`make test-race`)
 
-**Successful Incantation** (appended TestSCXML148 to `statechart_scxml_test.go`):
-```
-<xai:function_call name="Write">
-<parameter name="file_path">/mnt/c/USers/Albert.Latham/git/statechartx-2/statechart_scxml_test.go
+### History State Behavior
+- Shallow history: Restores direct child only
+- Deep history: Restores entire sub-hierarchy
+- History pseudo-states have `IsHistoryState: true` and specify `HistoryType`
+- `HistoryDefault` specifies fallback state when no history exists
+
+### Microstep Loop Protection
+The runtime limits microstep iterations (eventless transitions) to `MAX_MICROSTEPS` (100) to prevent infinite loops.

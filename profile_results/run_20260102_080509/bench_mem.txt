@@ -1,0 +1,7 @@
+goos: linux
+goarch: amd64
+pkg: github.com/comalice/statechartx
+cpu: AMD EPYC 9R14
+BenchmarkMemoryAllocation-8   	  358060	      2944 ns/op	    5389 B/op	      34 allocs/op
+PASS
+ok  	github.com/comalice/statechartx	1.102s
