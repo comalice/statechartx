@@ -117,14 +117,15 @@ type Runtime struct {
 
 // parallelRegion represents a single region in a parallel state
 type parallelRegion struct {
-        stateID    StateID
-        events     chan Event
-        done       chan struct{}
-        ctx        context.Context
-        cancel     context.CancelFunc
-        runtime    *Runtime // reference to parent runtime
+        stateID      StateID
+        events       chan Event
+        done         chan struct{} // signal to exit
+        finished     chan struct{} // signal that exit is complete
+        ctx          context.Context
+        cancel       context.CancelFunc
+        runtime      *Runtime // reference to parent runtime
         currentState StateID
-        mu         sync.RWMutex
+        mu           sync.RWMutex
 }
 
 //
@@ -353,6 +354,7 @@ func (rt *Runtime) enterParallelState(ctx context.Context, state *State) error {
                         stateID:      childID,
                         events:       make(chan Event, 10), // buffered channel
                         done:         make(chan struct{}),
+                        finished:     make(chan struct{}),
                         ctx:          regionCtx,
                         cancel:       regionCancel,
                         runtime:      rt,
@@ -363,14 +365,15 @@ func (rt *Runtime) enterParallelState(ctx context.Context, state *State) error {
                 
                 go func(r *parallelRegion, s *State) {
                         defer func() {
+                                close(r.finished) // Signal that goroutine has exited
                                 if rec := recover(); rec != nil {
                                         errChan <- fmt.Errorf("panic in region %d: %v", r.stateID, rec)
                                 }
                         }()
-                        
+
                         // Signal that region has started
                         startedChan <- r.stateID
-                        
+
                         if err := r.run(s); err != nil {
                                 errChan <- err
                         }
@@ -418,20 +421,20 @@ func (rt *Runtime) exitParallelState(ctx context.Context, state *State) error {
         rt.regionMu.Unlock()
         
         // Wait for all regions to exit with timeout
-        done := make(chan struct{})
+        allDone := make(chan struct{})
         go func() {
                 rt.regionMu.RLock()
                 for childID := range state.Children {
                         if region, exists := rt.parallelRegions[childID]; exists {
-                                <-region.ctx.Done()
+                                <-region.finished // Wait for goroutine to finish
                         }
                 }
                 rt.regionMu.RUnlock()
-                close(done)
+                close(allDone)
         }()
         
         select {
-        case <-done:
+        case <-allDone:
                 // All regions exited successfully
         case <-exitCtx.Done():
                 // Timeout - force cleanup
@@ -476,20 +479,21 @@ func (rt *Runtime) cleanupParallelRegions(stateID StateID) {
 
 // run is the main event loop for a parallel region
 func (r *parallelRegion) run(state *State) error {
-        // Check if this region itself is a parallel state
+        // If this region is a parallel state, spawn child regions first
         if state.IsParallel {
-                // This region is parallel, so we need to spawn nested regions
-                return r.runtime.enterParallelState(r.ctx, state)
-        }
-
-        // Enter the region's initial state
-        if state.EntryAction != nil {
-                if err := state.EntryAction(r.ctx, nil, 0, r.currentState); err != nil {
+                if err := r.runtime.enterParallelState(r.ctx, state); err != nil {
                         return err
                 }
+                // KEY FIX: Don't return - continue to event loop to monitor exit signals
         }
 
-        // Process events until done
+        // Enter the initial state hierarchy (from region root to deepest initial)
+        // This ensures entry actions are executed and done events are generated
+        if !state.IsParallel {
+                r.enterInitialHierarchy(r.ctx, state)
+        }
+
+        // Always run event loop to monitor done channel
         for {
                 select {
                 case <-r.done:
@@ -501,7 +505,10 @@ func (r *parallelRegion) run(state *State) error {
                         r.exitCurrentState(r.ctx)
                         return r.ctx.Err()
                 case event := <-r.events:
-                        r.processEvent(event, state)
+                        // Parallel states delegate event processing to children
+                        if !state.IsParallel {
+                                r.processEvent(event, state)
+                        }
                 }
         }
 }
@@ -509,24 +516,26 @@ func (r *parallelRegion) run(state *State) error {
 // processEvent processes a single event in a parallel region
 func (r *parallelRegion) processEvent(event Event, state *State) {
         r.mu.Lock()
-        defer r.mu.Unlock()
-        
+
         // Find matching transition
         currentState := r.runtime.machine.states[r.currentState]
         if currentState == nil {
+                r.mu.Unlock()
                 return
         }
-        
+
         transition := r.runtime.pickTransitionHierarchical(currentState, event)
         if transition == nil {
+                r.mu.Unlock()
                 return
         }
-        
+
         // Internal transition
         if transition.Target == 0 {
                 if transition.Action != nil {
                         transition.Action(r.ctx, &event, r.currentState, r.currentState)
                 }
+                r.mu.Unlock()
                 return
         }
         
@@ -544,6 +553,7 @@ func (r *parallelRegion) processEvent(event Event, state *State) {
                         if targetState.HistoryDefault != 0 {
                                 to = targetState.HistoryDefault
                         } else {
+                                r.mu.Unlock()
                                 return // Cannot restore history and no default
                         }
                 } else {
@@ -570,10 +580,84 @@ func (r *parallelRegion) processEvent(event Event, state *State) {
         
         // Check if we entered a final state in this region
         newState := r.runtime.machine.states[r.currentState]
+        var doneParent *State
+        var doneParallelParent *State
         if newState != nil && (newState.IsFinal || newState.Final) {
-                // Check if parent parallel state should emit done event
-                if state.Parent != nil && state.Parent.IsParallel {
-                        r.runtime.generateDoneEvent(r.ctx, state.Parent, newState)
+                // Save the states to generate done events for after releasing lock
+                doneParent = newState.Parent
+                regionState := r.runtime.machine.states[r.stateID]
+                if regionState != nil && regionState.Parent != nil && regionState.Parent.IsParallel {
+                        doneParallelParent = regionState.Parent
+                }
+        }
+
+        r.mu.Unlock()
+
+        // Generate done events after releasing the lock to avoid deadlock
+        // Get the parallel state ID (parent of region state)
+        regionState := r.runtime.machine.states[r.stateID]
+        var parallelStateID StateID
+        if regionState != nil && regionState.Parent != nil {
+                parallelStateID = regionState.Parent.ID
+        }
+
+        if doneParent != nil {
+                r.runtime.generateDoneEvent(r.ctx, doneParent, newState, parallelStateID)
+        }
+        if doneParallelParent != nil {
+                r.runtime.generateDoneEvent(r.ctx, doneParallelParent, regionState, parallelStateID)
+        }
+}
+
+// enterInitialHierarchy enters the initial state hierarchy for a parallel region
+func (r *parallelRegion) enterInitialHierarchy(ctx context.Context, regionRoot *State) {
+        // Build path from region root to current state (deepest initial)
+        var path []StateID
+        current := r.runtime.machine.states[r.currentState]
+        for current != nil {
+                path = append([]StateID{current.ID}, path...) // prepend
+                if current == regionRoot {
+                        break // Include region root in path
+                }
+                current = current.Parent
+        }
+
+        // Enter states in order (parent to child)
+        for i, stateID := range path {
+                state := r.runtime.machine.states[stateID]
+                if state == nil {
+                        continue
+                }
+
+                // Execute entry action
+                if state.EntryAction != nil {
+                        state.EntryAction(ctx, nil, 0, r.currentState)
+                }
+
+                // Execute initial action if moving to next state
+                if i < len(path)-1 && state.InitialAction != nil {
+                        nextStateID := path[i+1]
+                        state.InitialAction(ctx, nil, stateID, nextStateID)
+                }
+
+                // Check if this state is final and should generate done event
+                if state.IsFinal || state.Final {
+                        // Get the parallel state ID (parent of region state)
+                        regionState := r.runtime.machine.states[r.stateID]
+                        var parallelStateID StateID
+                        if regionState != nil && regionState.Parent != nil {
+                                parallelStateID = regionState.Parent.ID
+                        }
+
+                        // First generate done event for the region compound state (if it has one)
+                        if state.Parent != nil {
+                                r.runtime.generateDoneEvent(ctx, state.Parent, state, parallelStateID)
+                        }
+
+                        // Then check if parent parallel state should emit done event
+                        if regionState != nil && regionState.Parent != nil && regionState.Parent.IsParallel {
+                                r.runtime.generateDoneEvent(ctx, regionState.Parent, regionState, parallelStateID)
+                        }
                 }
         }
 }
@@ -582,32 +666,56 @@ func (r *parallelRegion) processEvent(event Event, state *State) {
 func (r *parallelRegion) exitCurrentState(ctx context.Context) {
         regionState := r.runtime.machine.states[r.stateID]
 
-        // If this region itself is a parallel state, exit its child regions
+        // If this region is a parallel state, exit child regions first
         if regionState != nil && regionState.IsParallel {
                 r.runtime.exitParallelState(ctx, regionState)
+
+                // Execute region state's own exit action after children exit
+                if regionState.ExitAction != nil {
+                        regionState.ExitAction(ctx, nil, regionState.ID, 0)
+                }
                 return
         }
 
         r.mu.Lock()
         defer r.mu.Unlock()
 
-        // Exit from current state up to the region root
+        // Exit from current state up to and including region root
         current := r.runtime.machine.states[r.currentState]
 
-        for current != nil && current != regionState {
+        for current != nil {
                 if current.ExitAction != nil {
                         current.ExitAction(ctx, nil, current.ID, 0)
                 }
+
+                // Stop after executing region state's exit action
+                if current == regionState {
+                        break
+                }
+
                 current = current.Parent
         }
 }
 
 // Stop stops the event processing loop
 func (rt *Runtime) Stop() error {
+        // Cancel context to signal all goroutines to exit
         if rt.cancel != nil {
                 rt.cancel()
         }
         rt.wg.Wait()
+
+        // After all goroutines have exited, execute top-level state's exit action if it's parallel
+        rt.mu.Lock()
+        defer rt.mu.Unlock()
+
+        currentState := rt.machine.states[rt.current]
+        if currentState != nil && currentState.IsParallel && currentState.ExitAction != nil {
+                // Execute the parallel state's exit action (child regions already exited)
+                ctx := context.Background()
+                currentState.ExitAction(ctx, nil, currentState.ID, 0)
+        }
+
         return nil
 }
 
@@ -757,7 +865,11 @@ func (rt *Runtime) processEvent(event Event) {
                 if transition.Action != nil {
                         transition.Action(rt.ctx, &event, rt.current, rt.current)
                 }
-                // No state change, so no eventless transitions to process
+                // Check if current state should generate done event
+                // (e.g., compound state whose child is now done)
+                rt.checkFinalState(rt.ctx)
+                // Process any eventless transitions
+                rt.processMicrosteps(rt.ctx)
                 return
         }
 
@@ -796,12 +908,12 @@ func (rt *Runtime) processEvent(event Event) {
         // Enter states from LCA down to target
         rt.enterFromLCA(rt.ctx, &event, from, to, lca)
 
-        // Update current state
-        rt.current = to
-        
+        // Update current state - enterFromLCA updates rt.current to deepest entered state
+        // (it's already been set by enterInitialChildren within enterFromLCA)
+
         // Check if we entered a final state (Step 12)
         rt.checkFinalState(rt.ctx)
-        
+
         // Process eventless transitions after state change (Step 8 - microsteps)
         rt.processMicrosteps(rt.ctx)
 }
@@ -948,7 +1060,7 @@ func (rt *Runtime) exitToLCA(ctx context.Context, event *Event, from, to, lca St
         }
 }
 
-// enterFromLCA enters states from LCA down to target
+// enterFromLCA enters states from LCA down to target and its initial children
 func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca StateID) {
         // Build path from LCA to target
         var path []StateID
@@ -965,12 +1077,23 @@ func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca
                 if state == nil {
                         continue
                 }
-                
+
+                // Check if this is a parallel state
+                if state.IsParallel {
+                        // Enter parallel state - spawn goroutines for each region
+                        rt.enterParallelState(ctx, state)
+                        // Don't continue - parallel regions handle their own entry
+                        return
+                }
+
                 // Execute entry action
                 if state.EntryAction != nil {
                         state.EntryAction(ctx, event, from, to)
+                } else if stateID == 112 {
+                        // DEBUG: Why is state 112's entry action not being called?
+                        _ = stateID // prevent unused warning
                 }
-                
+
                 // Execute initial action if this state has children and we're entering them
                 // InitialAction runs after parent entry but before child entry
                 if i < len(path)-1 && state.InitialAction != nil {
@@ -978,9 +1101,52 @@ func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca
                         state.InitialAction(ctx, event, stateID, nextStateID)
                 }
         }
-        
-        // Check if we entered a final state (Step 12)
-        rt.checkFinalState(ctx)
+
+        // Continue entering initial children until we reach an atomic state
+        // Only do this if the target state has children (i.e., it's a compound state)
+        lastState := rt.machine.states[to]
+        if lastState != nil && !lastState.IsParallel && lastState.Initial != 0 && len(lastState.Children) > 0 {
+                rt.enterInitialChildren(ctx, event, from, to, lastState)
+        } else if lastState != nil {
+                // Target is a leaf state or has no initial - set it as current
+                rt.current = to
+        }
+        // If lastState is nil, rt.current remains unchanged
+}
+
+// enterInitialChildren recursively enters initial children until reaching an atomic state
+func (rt *Runtime) enterInitialChildren(ctx context.Context, event *Event, from, to StateID, state *State) {
+        for state.Initial != 0 && len(state.Children) > 0 {
+                initialChild := rt.machine.states[state.Initial]
+                if initialChild == nil {
+                        break
+                }
+
+                // Execute InitialAction before entering child
+                if state.InitialAction != nil {
+                        state.InitialAction(ctx, event, state.ID, initialChild.ID)
+                }
+
+                // Check if initial child is parallel
+                if initialChild.IsParallel {
+                        rt.enterParallelState(ctx, initialChild)
+                        return
+                }
+
+                // Execute entry action for initial child
+                if initialChild.EntryAction != nil {
+                        initialChild.EntryAction(ctx, event, from, to)
+                }
+
+                // Update rt.current to the child we just entered
+                rt.current = initialChild.ID
+
+                // Check if we entered a final state
+                rt.checkFinalState(ctx)
+
+                // Continue with this child's children
+                state = initialChild
+        }
 }
 
 // checkFinalState checks if current state is final and generates done.state.id events (Step 12)
@@ -989,40 +1155,49 @@ func (rt *Runtime) checkFinalState(ctx context.Context) {
         if currentState == nil {
                 return
         }
-        
+
         // Check if current state is final (support both IsFinal and deprecated Final)
         if !currentState.IsFinal && !currentState.Final {
                 return
         }
-        
-        // Current state is final - check if parent compound state is complete
+
+        // Current state is final - walk up the ancestor chain and generate done events
+        // for any compound states that are now complete
         parent := currentState.Parent
-        if parent == nil {
-                // No parent - this is the root final state, machine is done
-                return
+        for parent != nil {
+                // Generate done event for this parent (use rt.current as parallel state ID)
+                rt.generateDoneEvent(ctx, parent, currentState, rt.current)
+
+                // Continue up the chain to check if grandparent is also complete
+                // (Only continue if parent is a compound state with single child)
+                if parent.IsParallel || len(parent.Children) != 1 {
+                        break // Parallel or multi-child states don't cascade
+                }
+                parent = parent.Parent
         }
-        
-        // Generate done event for parent
-        rt.generateDoneEvent(ctx, parent, currentState)
 }
 
 // generateDoneEvent generates a done.state.id event when a state completes
-func (rt *Runtime) generateDoneEvent(ctx context.Context, parent *State, finalState *State) {
+// parallelStateID is the ID of the current parallel state (used to determine event routing)
+func (rt *Runtime) generateDoneEvent(ctx context.Context, parent *State, finalState *State, parallelStateID StateID) {
         if parent == nil {
                 return
         }
         
-        // Check if we should emit done event
-        if !rt.shouldEmitDoneEvent(parent) {
-                return
-        }
-        
-        // Check if we already sent done event for this parent
+        // Check if we already sent done event for this parent (check first to avoid race)
         rt.doneEventsMu.Lock()
         if rt.doneEventsPending[parent.ID] {
                 rt.doneEventsMu.Unlock()
                 return
         }
+
+        // Check if we should emit done event (while holding lock to prevent race)
+        if !rt.shouldEmitDoneEvent(parent) {
+                rt.doneEventsMu.Unlock()
+                return
+        }
+
+        // Mark as pending before releasing lock
         rt.doneEventsPending[parent.ID] = true
         rt.doneEventsMu.Unlock()
         
@@ -1037,11 +1212,30 @@ func (rt *Runtime) generateDoneEvent(ctx context.Context, parent *State, finalSt
                 Address: 0, // broadcast
         }
         
-        // Send done event - use SendEvent to properly route to parallel regions
+        // Determine where to send the done event
+        // If parent is the current parallel state, send to root event queue
+        // Otherwise, use SendEvent to route to appropriate region
+        parallelState := rt.machine.states[parallelStateID]
+        shouldSendToRoot := (parallelState != nil && parallelState.IsParallel && parent.ID == parallelState.ID)
+
         go func() {
                 sendCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
                 defer cancel()
-                rt.SendEvent(sendCtx, doneEvent)
+
+                if shouldSendToRoot {
+                        // Send to root event queue for parallel state done events
+                        select {
+                        case rt.eventQueue <- doneEvent:
+                                // Event sent successfully
+                        case <-sendCtx.Done():
+                                // Timeout - event not delivered
+                        case <-rt.ctx.Done():
+                                // Runtime shutting down
+                        }
+                } else {
+                        // Use SendEvent for region-level done events
+                        rt.SendEvent(sendCtx, doneEvent)
+                }
         }()
 }
 
@@ -1059,17 +1253,17 @@ func (rt *Runtime) shouldEmitDoneEvent(parent *State) bool {
 func (rt *Runtime) allRegionsInFinalState(parallelState *State) bool {
         rt.regionMu.RLock()
         defer rt.regionMu.RUnlock()
-        
+
         for childID := range parallelState.Children {
                 region, exists := rt.parallelRegions[childID]
                 if !exists {
                         return false
                 }
-                
+
                 region.mu.RLock()
                 currentStateID := region.currentState
                 region.mu.RUnlock()
-                
+
                 state := rt.machine.states[currentStateID]
                 if state == nil || (!state.IsFinal && !state.Final) {
                         return false

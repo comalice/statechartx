@@ -24,22 +24,12 @@ func TestDoneEventSequentialState(t *testing.T) {
 		Initial:  2,
 		Children: map[StateID]*State{2: finalChild},
 	}
-	
+
 	// External state to transition back
 	external := &State{
 		ID: 3,
-		Transitions: []*Transition{
-			{
-				Event:  DoneEventID(1), // done.state.1
-				Target: 0,              // internal
-				Action: func(ctx context.Context, evt *Event, from, to StateID) error {
-					atomic.StoreInt32(&doneEventReceived, 1)
-					return nil
-				},
-			},
-		},
 	}
-	
+
 	root := &State{
 		ID:       0,
 		Initial:  3,
@@ -48,6 +38,14 @@ func TestDoneEventSequentialState(t *testing.T) {
 			{
 				Event:  100,
 				Target: 1, // enter parent
+			},
+			{
+				Event:  DoneEventID(1), // done.state.1
+				Target: 0,              // internal
+				Action: func(ctx context.Context, evt *Event, from, to StateID) error {
+					atomic.StoreInt32(&doneEventReceived, 1)
+					return nil
+				},
 			},
 		},
 	}
