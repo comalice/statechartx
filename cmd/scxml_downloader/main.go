@@ -86,7 +86,7 @@ func downloadWithBackoff(url, localPath string) error {
 }
 
 func downloadManifest(force bool) error {
-	localManifest := filepath.Join("pkg", "scxml_test_suite", "manifest.xml")
+	localManifest := filepath.Join("test", "scxml", "w3c_test_suite", "manifest.xml")
 	if !force {
 		if _, err := os.Stat(localManifest); err == nil {
 			return nil
@@ -151,7 +151,7 @@ func main() {
 	}
 
 	// 2. Parse manifest
-	manifestPath := filepath.Join("pkg", "scxml_test_suite", "manifest.xml")
+	manifestPath := filepath.Join("test", "scxml", "w3c_test_suite", "manifest.xml")
 	uris, err := getTestURIs(manifestPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to parse manifest: %v\n", err)

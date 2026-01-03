@@ -1,3 +1,16 @@
 coverage.*
 
 .bak/
+
+# Test binaries
+*.test
+
+# Profile data
+profile_results/
+*.prof
+
+# Build artifacts
+*.out
+
+# Temporary files
+.abacus.donotdelete

@@ -41,25 +41,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### File Structure
 
 ```
-statechart.go                  - Core state machine implementation (~1,333 lines)
+statechart.go                  - Core state machine implementation (~1,552 lines)
 statechart_test.go             - Unit tests for basic functionality
 statechart_scxml_*_test.go     - SCXML conformance tests (grouped by test number ranges)
 statechart_*_test.go           - Specialized tests (parallel, history, done events, stress, etc.)
-realtime/                      - Tick-based deterministic runtime (~230 lines)
+realtime/                      - Tick-based deterministic runtime
   runtime.go                   - RealtimeRuntime implementation
   event.go, tick.go           - Event batching and tick management
   README.md                    - Real-time runtime documentation
-builder/                       - Fluent builder API (functional options pattern)
-  helpers.go                   - Builder implementation
-  README.md                    - Builder documentation
 testutil/                      - Test utilities and adapters
 examples/                      - Example implementations
+  basic/                       - Basic usage example
   realtime/                    - Game loop, physics sim, replay examples
 benchmarks/                    - Performance benchmarking
 cmd/
-  scxml_dowloader/             - Downloads W3C SCXML test suite
-  examples/basic/              - Basic usage example
-doc/                          - Design docs, implementation summaries, performance reports
+  scxml_downloader/            - Downloads W3C SCXML test suite
+test/scxml/w3c_test_suite/    - SCXML conformance test data
+docs/                          - Design docs, architecture, performance reports
+scripts/                       - Build and profiling scripts
 ```
 
 ## Development Commands
@@ -108,20 +107,20 @@ make fuzz           # Run fuzz tests for 30s each
 ### SCXML Test Suite
 ```bash
 # Download W3C SCXML conformance tests
-go run cmd/scxml_dowloader/main.go
+go run cmd/scxml_downloader/main.go
 
 # Force re-download
-go run cmd/scxml_dowloader/main.go -f
+go run cmd/scxml_downloader/main.go -f
 
 # Download to custom directory
-go run cmd/scxml_dowloader/main.go --filepath ./tests
+go run cmd/scxml_downloader/main.go --filepath ./tests
 ```
 
 ## SCXML Conformance Testing
 
 The project includes a custom skill (`scxml-translator`) for translating W3C SCXML test cases into Go unit tests:
 
-- **Test Source**: W3C SCXML IRP test suite (downloaded via scxml_dowloader)
+- **Test Source**: W3C SCXML IRP test suite (downloaded via scxml_downloader)
 - **Target**: Generate tests in `statechart_scxml_*_test.go` files (grouped by test number ranges)
 - **Approach**: Map SCXML `<state>`, `<transition>`, `<onentry>` to equivalent Go `State` trees
 - **Validation**: Use `conf:pass` states to assert correct final configuration
@@ -169,29 +168,6 @@ rt := NewRuntime(machine, nil)
 ctx := context.Background()
 rt.Start(ctx)
 rt.SendEvent(ctx, Event{ID: 10})
-```
-
-### Using the Builder API
-
-```go
-import "github.com/comalice/statechartx/builder"
-
-// Fluent builder with functional options
-idle := builder.New("IDLE",
-    builder.WithEntry(func(ctx context.Context, evt *Event, from, to StateID) error {
-        log.Println("Entering IDLE")
-        return nil
-    }),
-    builder.On("START", "RUNNING"),
-)
-
-root := builder.Composite("ROOT",
-    idle,
-    builder.New("RUNNING",
-        builder.On("STOP", "IDLE"),
-        builder.On("ERROR", "FAULT", builder.WithGuard(isRecoverable)),
-    ),
-)
 ```
 
 ### Parallel States
