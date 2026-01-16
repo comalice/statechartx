@@ -341,11 +341,12 @@ func TestMemoryPressure(t *testing.T) {
 	const (
 		STATE1 StateID = 1
 		STATE2 StateID = 2
+		ROOT_ID StateID = 1000
 	)
 
 	for i := 0; ; i++ {
 		root := &State{
-			ID:       100,
+			ID:       ROOT_ID,
 			Initial:  STATE1,
 			Children: make(map[StateID]*State),
 		}
