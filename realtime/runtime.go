@@ -32,10 +32,29 @@ type RealtimeRuntime struct {
         batchMu     sync.Mutex
         sequenceNum uint64
 
+        // Parallel state support (sequential processing for determinism)
+        // Map of parallel state ID -> region states
+        parallelRegionStates map[statechartx.StateID]map[statechartx.StateID]*realtimeRegion
+        regionMu             sync.RWMutex
+
+        // Internal event queue for SCXML run-to-completion semantics
+        // Events raised during macrostep processing (e.g., in entry/exit/transition actions)
+        // are queued here and processed within the same macrostep
+        internalEventQueue []statechartx.Event
+        internalQueueMu    sync.Mutex
+        inMacrostep        bool // Flag indicating we're in macrostep processing
+
         // Control
         tickCtx     context.Context
         tickCancel  context.CancelFunc
         stopped     chan struct{}
+}
+
+// realtimeRegion represents a single region in a parallel state (sequential processing)
+type realtimeRegion struct {
+        regionID     statechartx.StateID   // ID of the region (child of parallel state)
+        currentState statechartx.StateID   // Current state within this region
+        eventQueue   []statechartx.Event   // Events queued for this region
 }
 
 // Config configures the real-time runtime
@@ -53,30 +72,22 @@ func NewRuntime(machine *statechartx.Machine, cfg Config) *RealtimeRuntime {
                 cfg.TickRate = 16667 * time.Microsecond // Default 60 FPS
         }
 
-        return &RealtimeRuntime{
+        rt := &RealtimeRuntime{
                 // Embed existing runtime (THIS IS THE KEY - REUSE EVERYTHING)
-                Runtime:    statechartx.NewRuntime(machine, nil),
-                tickRate:   cfg.TickRate,
-                eventBatch: make([]EventWithMeta, 0, cfg.MaxEventsPerTick),
-                stopped:    make(chan struct{}),
-        }
-}
-
-// Start begins tick-based execution
-func (rt *RealtimeRuntime) Start(ctx context.Context) error {
-        // Enter initial state using EXISTING method
-        if err := rt.Runtime.Start(ctx); err != nil {
-                return err
+                Runtime:              statechartx.NewRuntime(machine, nil),
+                tickRate:             cfg.TickRate,
+                eventBatch:           make([]EventWithMeta, 0, cfg.MaxEventsPerTick),
+                stopped:              make(chan struct{}),
+                parallelRegionStates: make(map[statechartx.StateID]map[statechartx.StateID]*realtimeRegion),
         }
 
-        // Start tick loop (ONLY DIFFERENCE from event-driven)
-        rt.tickCtx, rt.tickCancel = context.WithCancel(ctx)
-        rt.ticker = time.NewTicker(rt.tickRate)
+        // Register parallel state hooks for sequential processing
+        rt.Runtime.ParallelHooks = rt.createParallelHooks()
 
-        go rt.tickLoop()
-
-        return nil
+        return rt
 }
+
+// Start is implemented in parallel.go to handle sequential parallel state processing
 
 // Stop gracefully stops the runtime
 func (rt *RealtimeRuntime) Stop() error {
@@ -129,25 +140,7 @@ func (rt *RealtimeRuntime) tickLoop() {
         }
 }
 
-// SendEvent queues an event for the next tick (thread-safe)
-// NOTE: No context parameter - events are queued, not processed immediately
-func (rt *RealtimeRuntime) SendEvent(event statechartx.Event) error {
-        rt.batchMu.Lock()
-        defer rt.batchMu.Unlock()
-
-        if len(rt.eventBatch) >= cap(rt.eventBatch) {
-                return errors.New("event queue full")
-        }
-
-        rt.eventBatch = append(rt.eventBatch, EventWithMeta{
-                Event:       event,
-                SequenceNum: rt.sequenceNum,
-                Priority:    0, // Default priority
-        })
-        rt.sequenceNum++
-
-        return nil
-}
+// SendEvent is implemented in parallel.go to handle both normal and parallel state routing
 
 // SendEventWithPriority queues an event with priority
 func (rt *RealtimeRuntime) SendEventWithPriority(event statechartx.Event, priority int) error {
