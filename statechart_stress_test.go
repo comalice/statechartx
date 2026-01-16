@@ -71,7 +71,14 @@ func TestMillionStates(t *testing.T) {
 	var m2 runtime.MemStats
 	runtime.ReadMemStats(&m2)
 	finalAlloc := m2.Alloc
-	memoryUsed := float64(finalAlloc-initialAlloc) / (1024 * 1024 * 1024) // GB
+
+	// Handle case where GC reduced memory below initial allocation
+	var memoryUsed float64
+	if finalAlloc > initialAlloc {
+		memoryUsed = float64(finalAlloc-initialAlloc) / (1024 * 1024 * 1024) // GB
+	} else {
+		memoryUsed = -float64(initialAlloc-finalAlloc) / (1024 * 1024 * 1024) // GB (negative indicates GC freed memory)
+	}
 
 	t.Logf("Created %d states in %v", totalStates, creationTime)
 	t.Logf("Memory used: %.3f GB", memoryUsed)
