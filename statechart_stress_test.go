@@ -424,7 +424,14 @@ func TestConcurrentStateMachines(t *testing.T) {
 	var m2 runtime.MemStats
 	runtime.ReadMemStats(&m2)
 	finalAlloc := m2.Alloc
-	memoryUsed := float64(finalAlloc-initialAlloc) / (1024 * 1024) // MB
+
+	// Handle case where GC reduced memory below initial allocation
+	var memoryUsed float64
+	if finalAlloc > initialAlloc {
+		memoryUsed = float64(finalAlloc-initialAlloc) / (1024 * 1024) // MB
+	} else {
+		memoryUsed = -float64(initialAlloc-finalAlloc) / (1024 * 1024) // MB (negative indicates GC freed memory)
+	}
 
 	t.Logf("Memory used: %.2f MB (%.2f KB per machine)", memoryUsed, memoryUsed*1024/float64(numMachines))
 }
