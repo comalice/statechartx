@@ -1,3 +1,5 @@
+// Package testutil provides test helpers for StatechartX, including adapters
+// that provide a common interface for testing both event-driven and tick-based runtimes.
 package testutil
 
 import (
