@@ -28,6 +28,11 @@ const (
         DefaultActionTimeout = 5 * time.Second
 )
 
+// Error variables
+var (
+        ErrEventQueueFull = errors.New("event queue is full")
+)
+
 type Event struct {
         ID      EventID
         Data    any
@@ -89,6 +94,26 @@ type Machine struct {
         current *State
 }
 
+// ParallelStateHooks provides extension points for custom parallel state processing.
+// If nil, the default goroutine-based implementation is used.
+// If set, hooks are called instead to allow alternative implementations (e.g., sequential processing).
+type ParallelStateHooks struct {
+        // OnEnterParallel is called when entering a parallel state.
+        // If it returns an error, the transition is aborted.
+        // If nil, default goroutine-based entry is used.
+        OnEnterParallel func(ctx context.Context, state *State) error
+
+        // OnExitParallel is called when exiting a parallel state.
+        // If it returns an error, the exit continues but error is logged.
+        // If nil, default goroutine-based exit is used.
+        OnExitParallel func(ctx context.Context, state *State) error
+
+        // OnSendToRegions is called when sending an event to parallel regions.
+        // If it returns an error, event delivery failed.
+        // If nil, default channel-based routing is used.
+        OnSendToRegions func(ctx context.Context, event Event) error
+}
+
 // Runtime wraps a Machine and provides event queue processing
 type Runtime struct {
         machine    *Machine
@@ -103,7 +128,8 @@ type Runtime struct {
         // Parallel state support
         parallelRegions map[StateID]*parallelRegion
         regionMu        sync.RWMutex
-        
+        ParallelHooks   *ParallelStateHooks // Extension point for custom parallel state processing
+
         // History state support
         history       map[StateID]StateID   // stateID → last active child (shallow)
         historyMu     sync.RWMutex
@@ -325,11 +351,18 @@ func (rt *Runtime) enterParallelState(ctx context.Context, state *State) error {
         if !state.IsParallel {
                 return errors.New("not a parallel state")
         }
-        
+
         if len(state.Children) == 0 {
                 return errors.New("parallel state has no children")
         }
-        
+
+        // Check for custom parallel state handling hook
+        if rt.ParallelHooks != nil && rt.ParallelHooks.OnEnterParallel != nil {
+                return rt.ParallelHooks.OnEnterParallel(ctx, state)
+        }
+
+        // Default implementation: goroutine-based parallel regions
+
         // Execute parent entry action
         if state.EntryAction != nil {
                 if err := state.EntryAction(ctx, nil, 0, state.ID); err != nil {
@@ -406,7 +439,14 @@ func (rt *Runtime) exitParallelState(ctx context.Context, state *State) error {
         if !state.IsParallel {
                 return errors.New("not a parallel state")
         }
-        
+
+        // Check for custom parallel state handling hook
+        if rt.ParallelHooks != nil && rt.ParallelHooks.OnExitParallel != nil {
+                return rt.ParallelHooks.OnExitParallel(ctx, state)
+        }
+
+        // Default implementation: goroutine-based parallel regions
+
         // Create context with timeout for exit
         exitCtx, exitCancel := context.WithTimeout(ctx, DefaultExitTimeout)
         defer exitCancel()
@@ -743,12 +783,19 @@ func (rt *Runtime) SendEvent(ctx context.Context, event Event) error {
 
 // sendEventToRegions routes events to parallel regions based on address
 func (rt *Runtime) sendEventToRegions(ctx context.Context, event Event) error {
+        // Check for custom parallel state handling hook
+        if rt.ParallelHooks != nil && rt.ParallelHooks.OnSendToRegions != nil {
+                return rt.ParallelHooks.OnSendToRegions(ctx, event)
+        }
+
+        // Default implementation: channel-based routing
+
         sendCtx, cancel := context.WithTimeout(ctx, DefaultSendTimeout)
         defer cancel()
-        
+
         rt.regionMu.RLock()
         defer rt.regionMu.RUnlock()
-        
+
         if event.Address == 0 {
                 // Broadcast to all regions
                 for _, region := range rt.parallelRegions {
@@ -1544,9 +1591,182 @@ func (rt *Runtime) ProcessMicrosteps(ctx context.Context) {
         rt.processMicrosteps(ctx)
 }
 
+// ProcessEventWithoutMicrosteps processes an event transition WITHOUT calling processMicrosteps afterward
+// This is used by the realtime runtime to maintain manual control over the macrostep loop
+func (rt *Runtime) ProcessEventWithoutMicrosteps(event Event) {
+        rt.mu.Lock()
+        defer rt.mu.Unlock()
+
+        currentState := rt.machine.states[rt.current]
+        if currentState == nil {
+                return
+        }
+
+        // Find matching transition (guards are checked in pickTransition)
+        transition := rt.pickTransitionHierarchical(currentState, event)
+        if transition == nil {
+                return // No matching transition, ignore event
+        }
+
+        // Internal transition (Target == 0)
+        if transition.Target == 0 {
+                // Execute action only, no state change
+                if transition.Action != nil {
+                        transition.Action(rt.ctx, &event, rt.current, rt.current)
+                }
+                // Check if current state should generate done event
+                rt.checkFinalState(rt.ctx)
+                // NOTE: Do NOT call processMicrosteps - let caller control macrostep loop
+                return
+        }
+
+        // External transition - use LCA algorithm for proper entry/exit order
+        from := rt.current
+        to := transition.Target
+
+        // Check if target is a history state
+        targetState := rt.machine.states[to]
+        if targetState != nil && targetState.IsHistoryState {
+                // Restore history instead of entering target directly
+                restoredState, err := rt.restoreHistory(rt.ctx, targetState, &event, from)
+                if err != nil {
+                        // History restoration failed, use default or skip
+                        if targetState.HistoryDefault != 0 {
+                                to = targetState.HistoryDefault
+                        } else {
+                                return // Cannot restore history and no default
+                        }
+                } else {
+                        to = restoredState
+                }
+        }
+
+        // Compute Least Common Ancestor
+        lca := rt.computeLCA(from, to)
+
+        // Exit states from current up to (but not including) LCA
+        rt.exitToLCA(rt.ctx, &event, from, to, lca)
+
+        // Execute transition action
+        if transition.Action != nil {
+                transition.Action(rt.ctx, &event, from, to)
+        }
+
+        // Enter states from LCA down to target
+        rt.enterFromLCA(rt.ctx, &event, from, to, lca)
+
+        // Check if we entered a final state
+        rt.checkFinalState(rt.ctx)
+
+        // NOTE: Do NOT call processMicrosteps - let caller control macrostep loop
+}
+
+// ProcessSingleMicrostep processes ONE eventless transition and returns true if one was found
+// This is used by the realtime runtime to interleave eventless transitions with internal events
+func (rt *Runtime) ProcessSingleMicrostep(ctx context.Context) bool {
+        rt.mu.Lock()
+        defer rt.mu.Unlock()
+
+        noEvent := Event{ID: NO_EVENT}
+
+        currentState := rt.machine.states[rt.current]
+        if currentState == nil {
+                return false
+        }
+
+        // Look for eventless transition (Event == NO_EVENT)
+        transition := rt.pickTransitionHierarchical(currentState, noEvent)
+        if transition == nil {
+                // No eventless transition found
+                return false
+        }
+
+        // Found an eventless transition - execute it
+
+        // Internal transition (Target == 0)
+        if transition.Target == 0 {
+                // Execute action only, no state change
+                if transition.Action != nil {
+                        transition.Action(ctx, &noEvent, rt.current, rt.current)
+                }
+                // Internal transition doesn't change state
+                return true
+        }
+
+        // External eventless transition
+        from := rt.current
+        to := transition.Target
+
+        // Check if target is a history state
+        targetState := rt.machine.states[to]
+        if targetState != nil && targetState.IsHistoryState {
+                // Restore history instead of entering target directly
+                restoredState, err := rt.restoreHistory(ctx, targetState, &noEvent, from)
+                if err != nil {
+                        // History restoration failed, use default or skip
+                        if targetState.HistoryDefault != 0 {
+                                to = targetState.HistoryDefault
+                        } else {
+                                return false // Cannot restore history and no default
+                        }
+                } else {
+                        to = restoredState
+                }
+        }
+
+        // Compute Least Common Ancestor
+        lca := rt.computeLCA(from, to)
+
+        // Exit states from current up to (but not including) LCA
+        rt.exitToLCA(ctx, &noEvent, from, to, lca)
+
+        // Execute transition action
+        if transition.Action != nil {
+                transition.Action(ctx, &noEvent, from, to)
+        }
+
+        // Enter states from LCA down to target
+        rt.enterFromLCA(ctx, &noEvent, from, to, lca)
+
+        // Update current state
+        rt.current = to
+
+        // Check if we entered a final state
+        rt.checkFinalState(ctx)
+
+        return true
+}
+
 // GetCurrentState exposes current state for tick-based runtime
 func (rt *Runtime) GetCurrentState() StateID {
         rt.mu.RLock()
         defer rt.mu.RUnlock()
         return rt.current
+}
+
+// SetCurrentState sets the current state (for realtime runtime initialization)
+func (rt *Runtime) SetCurrentState(stateID StateID) {
+        rt.mu.Lock()
+        defer rt.mu.Unlock()
+        rt.current = stateID
+}
+
+// SetContext sets the runtime context (for realtime runtime initialization)
+func (rt *Runtime) SetContext(ctx context.Context) {
+        rt.ctx = ctx
+}
+
+// GetMachine returns the underlying Machine
+func (rt *Runtime) GetMachine() *Machine {
+        return rt.machine
+}
+
+// GetState returns a state by ID from the machine
+func (m *Machine) GetState(stateID StateID) *State {
+        return m.states[stateID]
+}
+
+// FindDeepestInitial finds the deepest initial state starting from a given state
+func (m *Machine) FindDeepestInitial(stateID StateID) StateID {
+        return m.findDeepestInitial(stateID)
 }
