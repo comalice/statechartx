@@ -1,3 +1,84 @@
+// Package statechartx implements hierarchical state machines (statecharts) in Go.
+//
+// StatechartX provides event-driven state machines with support for hierarchical states,
+// parallel (orthogonal) regions, history states, guarded transitions, and entry/exit actions.
+// The implementation follows SCXML semantics for state machine execution.
+//
+// # Basic Example
+//
+// Create a simple traffic light state machine:
+//
+//	// Define states
+//	green := &statechartx.State{ID: 1}
+//	yellow := &statechartx.State{ID: 2}
+//	red := &statechartx.State{ID: 3}
+//
+//	// Define transitions: green -> yellow -> red -> green
+//	green.On(100, 2, nil, nil)   // event 100: go to yellow
+//	yellow.On(101, 3, nil, nil)  // event 101: go to red
+//	red.On(102, 1, nil, nil)     // event 102: go to green
+//
+//	// Build the machine
+//	root := &statechartx.State{ID: 0, Initial: 1, Children: map[statechartx.StateID]*statechartx.State{
+//		1: green, 2: yellow, 3: red,
+//	}}
+//	machine, _ := statechartx.NewMachine(root)
+//
+//	// Create and start runtime
+//	rt := statechartx.NewRuntime(machine, nil)
+//	ctx := context.Background()
+//	rt.Start(ctx)
+//
+//	// Send events to trigger transitions
+//	rt.SendEvent(ctx, statechartx.Event{ID: 100}) // green -> yellow
+//	rt.SendEvent(ctx, statechartx.Event{ID: 101}) // yellow -> red
+//
+//	if rt.IsInState(3) {
+//		fmt.Println("Light is red")
+//	}
+//
+// # Core Concepts
+//
+// State Machine: A Machine is a hierarchical collection of States with a root compound state.
+// States can have Children, making them compound states with an Initial child.
+//
+// Runtime: The Runtime manages execution - handling events, processing transitions, coordinating
+// parallel regions, and recording history. Create one Runtime per Machine instance.
+//
+// Events: Events trigger Transitions between states. Each Event has an ID and optional Data.
+// Special event IDs: NO_EVENT (0) for immediate/eventless transitions, ANY_EVENT (-1) for wildcards.
+//
+// Transitions: A Transition connects a source state to a target state, triggered by an event.
+// Guards can conditionally enable/disable transitions. Actions execute during the transition.
+//
+// Actions: Entry/exit actions execute when entering/leaving states. Transition actions execute
+// during the transition itself.
+//
+// # Advanced Features
+//
+// Parallel States: Set IsParallel=true to create orthogonal regions that execute concurrently.
+// Each child region runs independently. Use Event.Address to target specific regions.
+//
+// History States: Set IsHistoryState=true and HistoryType (Shallow/Deep) to create history
+// pseudo-states that remember and restore previous state configurations.
+//
+// Custom Hooks: Pass ParallelStateHooks to NewRuntime() to override default parallel state
+// behavior (e.g., for sequential processing in deterministic runtimes).
+//
+// # Performance
+//
+// Event-driven runtime: ~2M events/sec throughput, ~217ns latency (see docs/performance.md)
+//
+// For deterministic tick-based execution with fixed time-steps (e.g., game engines,
+// physics simulations), see the realtime package.
+//
+// # Use Cases
+//
+//   - UI state management (workflows, wizards, navigation)
+//   - Game AI and character controllers
+//   - Protocol implementations (network, communication)
+//   - Workflow engines and business process automation
+//   - IoT and embedded systems control logic
 package statechartx
 
 import (
