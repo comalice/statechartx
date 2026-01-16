@@ -582,8 +582,9 @@ func (r *parallelRegion) processEvent(event Event, state *State) {
         // External transition
         from := r.currentState
         to := transition.Target
-        
+
         // Check if target is a history state
+        isHistoryRestoration := false
         targetState := r.runtime.machine.states[to]
         if targetState != nil && targetState.IsHistoryState {
                 // Restore history instead of entering target directly
@@ -598,22 +599,23 @@ func (r *parallelRegion) processEvent(event Event, state *State) {
                         }
                 } else {
                         to = restoredState
+                        isHistoryRestoration = true
                 }
         }
-        
+
         // Compute LCA
         lca := r.runtime.computeLCA(from, to)
-        
+
         // Exit states
         r.runtime.exitToLCA(r.ctx, &event, from, to, lca)
-        
+
         // Execute transition action
         if transition.Action != nil {
                 transition.Action(r.ctx, &event, from, to)
         }
-        
+
         // Enter states
-        r.runtime.enterFromLCA(r.ctx, &event, from, to, lca)
+        r.runtime.enterFromLCA(r.ctx, &event, from, to, lca, isHistoryRestoration)
         
         // Update current state
         r.currentState = to
@@ -923,8 +925,9 @@ func (rt *Runtime) processEvent(event Event) {
         // External transition - use LCA algorithm for proper entry/exit order (Step 5)
         from := rt.current
         to := transition.Target
-        
+
         // Check if target is a history state
+        isHistoryRestoration := false
         targetState := rt.machine.states[to]
         if targetState != nil && targetState.IsHistoryState {
                 // Restore history instead of entering target directly
@@ -938,6 +941,7 @@ func (rt *Runtime) processEvent(event Event) {
                         }
                 } else {
                         to = restoredState
+                        isHistoryRestoration = true
                 }
         }
 
@@ -953,7 +957,7 @@ func (rt *Runtime) processEvent(event Event) {
         }
 
         // Enter states from LCA down to target
-        rt.enterFromLCA(rt.ctx, &event, from, to, lca)
+        rt.enterFromLCA(rt.ctx, &event, from, to, lca, isHistoryRestoration)
 
         // Update current state - enterFromLCA updates rt.current to deepest entered state
         // (it's already been set by enterInitialChildren within enterFromLCA)
@@ -1002,8 +1006,9 @@ func (rt *Runtime) processMicrosteps(ctx context.Context) {
                 // External eventless transition
                 from := rt.current
                 to := transition.Target
-                
+
                 // Check if target is a history state
+                isHistoryRestoration := false
                 targetState := rt.machine.states[to]
                 if targetState != nil && targetState.IsHistoryState {
                         // Restore history instead of entering target directly
@@ -1017,22 +1022,23 @@ func (rt *Runtime) processMicrosteps(ctx context.Context) {
                                 }
                         } else {
                                 to = restoredState
+                                isHistoryRestoration = true
                         }
                 }
-                
+
                 // Compute Least Common Ancestor
                 lca := rt.computeLCA(from, to)
-                
+
                 // Exit states from current up to (but not including) LCA
                 rt.exitToLCA(ctx, &noEvent, from, to, lca)
-                
+
                 // Execute transition action
                 if transition.Action != nil {
                         transition.Action(ctx, &noEvent, from, to)
                 }
-                
+
                 // Enter states from LCA down to target
-                rt.enterFromLCA(ctx, &noEvent, from, to, lca)
+                rt.enterFromLCA(ctx, &noEvent, from, to, lca, isHistoryRestoration)
                 
                 // Update current state
                 rt.current = to
@@ -1092,14 +1098,15 @@ func (rt *Runtime) computeLCA(from, to StateID) StateID {
 func (rt *Runtime) exitToLCA(ctx context.Context, event *Event, from, to, lca StateID) {
         current := rt.machine.states[from]
         for current != nil && current.ID != lca {
-                // Record history before exiting
+                // Record shallow history before exiting
+                // Deep history is recorded on entry, not exit
                 if current.Parent != nil {
-                        rt.recordHistory(current.Parent.ID, current.ID)
+                        rt.recordShallowHistory(current.Parent.ID, current.ID)
                 }
-                
+
                 // Clear done event flag when exiting
                 rt.clearDoneEvent(current.ID)
-                
+
                 if current.ExitAction != nil {
                         current.ExitAction(ctx, event, from, to)
                 }
@@ -1108,7 +1115,8 @@ func (rt *Runtime) exitToLCA(ctx context.Context, event *Event, from, to, lca St
 }
 
 // enterFromLCA enters states from LCA down to target and its initial children
-func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca StateID) {
+// isHistoryRestoration indicates if this entry is from a history state restoration
+func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca StateID, isHistoryRestoration bool) {
         // Build path from LCA to target
         var path []StateID
         current := rt.machine.states[to]
@@ -1116,6 +1124,9 @@ func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca
                 path = append([]StateID{current.ID}, path...) // prepend to reverse order
                 current = current.Parent
         }
+
+        // Store the explicit target so we know which state was directly targeted
+        explicitTarget := to
 
         // Enter states in order (parent to child)
         // Execute InitialAction after parent entry but before child entry (Step 10)
@@ -1149,14 +1160,33 @@ func (rt *Runtime) enterFromLCA(ctx context.Context, event *Event, from, to, lca
                 }
         }
 
+        // Set rt.current to the explicit target temporarily for history recording
+        // This ensures getActiveConfiguration captures the state before entering initial children
+        rt.current = explicitTarget
+
+        // Record deep history for each ancestor of the explicit target
+        // Do this BEFORE entering initial children to capture the explicit target state
+        // This prevents initial child entry from overwriting correct deep history
+        // Skip recording if this is a history restoration (shallow history shouldn't overwrite deep history)
+        if !isHistoryRestoration {
+                current = rt.machine.states[explicitTarget]
+                for current != nil {
+                        if current.Parent != nil {
+                                config := rt.getActiveConfiguration()
+                                rt.recordDeepHistory(current.Parent.ID, config)
+                        }
+                        current = current.Parent
+                }
+        }
+
         // Continue entering initial children until we reach an atomic state
         // Only do this if the target state has children (i.e., it's a compound state)
         lastState := rt.machine.states[to]
         if lastState != nil && !lastState.IsParallel && lastState.Initial != 0 && len(lastState.Children) > 0 {
                 rt.enterInitialChildren(ctx, event, from, to, lastState)
         } else if lastState != nil {
-                // Target is a leaf state or has no initial - set it as current
-                rt.current = to
+                // Target is a leaf state or has no initial - keep current as is
+                // (it was already set to 'to' above)
         }
         // If lastState is nil, rt.current remains unchanged
 }
@@ -1466,17 +1496,27 @@ func (s *State) On(event EventID, target StateID, guard *Guard, action *Action) 
 // History State Support Functions
 
 // recordHistory records the last active child state for history restoration
+// This is kept for backward compatibility but now just delegates to recordShallowHistory
 func (rt *Runtime) recordHistory(parentID StateID, childID StateID) {
-        // Record shallow history
+        rt.recordShallowHistory(parentID, childID)
+}
+
+// recordShallowHistory records only shallow history (direct child)
+func (rt *Runtime) recordShallowHistory(parentID StateID, childID StateID) {
         rt.historyMu.Lock()
         rt.history[parentID] = childID
         rt.historyMu.Unlock()
-        
-        // Record deep history (full active configuration)
+}
+
+// recordDeepHistory records the full active configuration for deep history
+func (rt *Runtime) recordDeepHistory(parentID StateID, config []StateID) {
         rt.deepHistoryMu.Lock()
-        config := rt.getActiveConfiguration()
         rt.deepHistory[parentID] = config
         rt.deepHistoryMu.Unlock()
+        // Debug logging (disabled)
+        // if len(config) > 0 {
+        //      fmt.Printf("DEBUG: Recorded deep history for parent %d: %v (deepest: %d)\n", parentID, config, config[len(config)-1])
+        // }
 }
 
 // getActiveConfiguration returns the current active state configuration
@@ -1625,6 +1665,7 @@ func (rt *Runtime) ProcessEventWithoutMicrosteps(event Event) {
         to := transition.Target
 
         // Check if target is a history state
+        isHistoryRestoration := false
         targetState := rt.machine.states[to]
         if targetState != nil && targetState.IsHistoryState {
                 // Restore history instead of entering target directly
@@ -1638,6 +1679,7 @@ func (rt *Runtime) ProcessEventWithoutMicrosteps(event Event) {
                         }
                 } else {
                         to = restoredState
+                        isHistoryRestoration = true
                 }
         }
 
@@ -1653,7 +1695,7 @@ func (rt *Runtime) ProcessEventWithoutMicrosteps(event Event) {
         }
 
         // Enter states from LCA down to target
-        rt.enterFromLCA(rt.ctx, &event, from, to, lca)
+        rt.enterFromLCA(rt.ctx, &event, from, to, lca, isHistoryRestoration)
 
         // Check if we entered a final state
         rt.checkFinalState(rt.ctx)
@@ -1698,6 +1740,7 @@ func (rt *Runtime) ProcessSingleMicrostep(ctx context.Context) bool {
         to := transition.Target
 
         // Check if target is a history state
+        isHistoryRestoration := false
         targetState := rt.machine.states[to]
         if targetState != nil && targetState.IsHistoryState {
                 // Restore history instead of entering target directly
@@ -1711,6 +1754,7 @@ func (rt *Runtime) ProcessSingleMicrostep(ctx context.Context) bool {
                         }
                 } else {
                         to = restoredState
+                        isHistoryRestoration = true
                 }
         }
 
@@ -1726,7 +1770,7 @@ func (rt *Runtime) ProcessSingleMicrostep(ctx context.Context) bool {
         }
 
         // Enter states from LCA down to target
-        rt.enterFromLCA(ctx, &noEvent, from, to, lca)
+        rt.enterFromLCA(ctx, &noEvent, from, to, lca, isHistoryRestoration)
 
         // Update current state
         rt.current = to
