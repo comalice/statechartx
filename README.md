@@ -65,12 +65,16 @@ For more examples, see the [examples/](examples/) directory.
 
 ## Documentation
 
-- **[Core Package Guide](README_CORE.md)** - Complete API guide with patterns and examples
+**Getting Started:**
+1. **[Core Package Guide](README_CORE.md)** - Complete API guide with patterns and examples
+2. **[Decision Guide](docs/DECISION-GUIDE.md)** - Choose runtime, state patterns, and strategies
+3. **[Examples](examples/README.md)** - Runnable code samples
+
+**Deep Dives:**
 - [Architecture Overview](docs/architecture.md) - System design and key concepts
 - [Real-Time Runtime](realtime/README.md) - Tick-based deterministic execution
 - [Performance Testing](docs/performance.md) - Benchmarks and optimization
-- [SCXML Compliance](docs/SCXML_COMPLIANCE.md) - W3C conformance and known departures
-- [Examples](examples/README.md) - Runnable code examples
+- [SCXML Conformance](docs/SCXML_COMPLIANCE.md) - W3C conformance and known departures
 
 ## Performance
 
