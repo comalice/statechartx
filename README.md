@@ -10,7 +10,7 @@
 - **Parallel States** - Independent concurrent regions with automatic synchronization
 - **Thread-Safe** - Concurrent event dispatch via mutex protection
 - **Real-Time Runtime** - Tick-based deterministic execution for games and simulations
-- **SCXML Conformance** - Validated against W3C SCXML test suite
+- **SCXML Conformance** - Core semantics validated against W3C SCXML test suite (see [docs/SCXML_COMPLIANCE.md](docs/SCXML_COMPLIANCE.md) for known departures)
 - **Lightweight** - ~1,552 LOC core implementation with minimal dependencies
 
 ## Installation
@@ -68,7 +68,7 @@ For more examples, see the [examples/](examples/) directory.
 - [Architecture Overview](docs/architecture.md) - System design and key concepts
 - [Real-Time Runtime](docs/realtime-runtime.md) - Tick-based deterministic execution
 - [Performance Testing](docs/performance.md) - Benchmarks and optimization
-- [SCXML Conformance](docs/scxml-conformance.md) - W3C test suite integration
+- [SCXML Compliance](docs/SCXML_COMPLIANCE.md) - W3C conformance and known departures
 - [Examples](examples/README.md) - Runnable code examples
 
 ## Performance
