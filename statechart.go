@@ -384,7 +384,9 @@ func NewRuntime(machine *Machine, ext any) *Runtime {
         }
 }
 
-// Start begins the event processing loop
+// Start initializes the runtime and enters the initial state configuration.
+// Spawns a goroutine for event processing. Call Stop() to terminate gracefully.
+// Returns error if already started or if initial state entry fails.
 func (rt *Runtime) Start(ctx context.Context) error {
         if rt.ctx != nil {
                 return errors.New("runtime already started")
@@ -854,7 +856,9 @@ func (r *parallelRegion) exitCurrentState(ctx context.Context) {
         }
 }
 
-// Stop stops the event processing loop
+// Stop gracefully terminates the runtime's event processing loop.
+// Blocks until all worker goroutines (parallel states) have exited.
+// Safe to call multiple times (subsequent calls are no-ops).
 func (rt *Runtime) Stop() error {
         // Cancel context to signal all goroutines to exit
         if rt.cancel != nil {
@@ -876,7 +880,9 @@ func (rt *Runtime) Stop() error {
         return nil
 }
 
-// SendEvent queues an event for processing
+// SendEvent submits an event to the runtime's queue for asynchronous processing.
+// Events are processed in FIFO order, with internal events having priority over external.
+// Returns ErrEventQueueFull if the queue is full, or error if runtime is stopped.
 func (rt *Runtime) SendEvent(ctx context.Context, event Event) error {
         // Check if we're in a parallel state and need to route the event
         rt.regionMu.RLock()
@@ -945,7 +951,9 @@ func (rt *Runtime) sendEventToRegions(ctx context.Context, event Event) error {
         }
 }
 
-// IsInState checks if the runtime is currently in the given state or any of its ancestors
+// IsInState checks if the given state ID is currently active in the configuration.
+// For hierarchical states, returns true if the state OR any of its descendants are active.
+// Thread-safe for concurrent access.
 func (rt *Runtime) IsInState(stateID StateID) bool {
         rt.mu.RLock()
         defer rt.mu.RUnlock()
