@@ -272,6 +272,9 @@ func (s *State) OnExit(action Action) {
         s.ExitAction = action
 }
 
+// NewMachine creates a new state machine from the given root state.
+// Validates the state hierarchy (checks for cycles, duplicate IDs, missing children).
+// Returns error if validation fails.
 func NewMachine(root *State) (*Machine, error) {
         if root == nil {
                 return nil, errors.New("no root state provided")
@@ -361,7 +364,13 @@ func (m *Machine) findDeepestInitial(stateID StateID) StateID {
         return stateID
 }
 
-// NewRuntime creates a new Runtime for the given machine
+// NewRuntime creates a new runtime for the given machine.
+//
+// The ext parameter is optional (pass nil for defaults):
+//   - Pass nil: Uses default goroutine-based parallel state implementation
+//   - Pass *ParallelStateHooks: Custom hooks for sequential/deterministic processing
+//
+// The returned runtime is ready to be started with Start().
 func NewRuntime(machine *Machine, ext any) *Runtime {
         return &Runtime{
                 machine:           machine,
