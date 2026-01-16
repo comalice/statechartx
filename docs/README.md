@@ -2,6 +2,10 @@
 
 This directory contains comprehensive documentation for the StatechartX state machine library.
 
+## Getting Started
+
+**New to StatechartX?** Start with the [Core Package Guide](../README_CORE.md) for API patterns, code examples, and common use cases.
+
 ## Core Documentation
 
 ### [Architecture Overview](architecture.md)
@@ -12,8 +16,8 @@ System design, key concepts, and architectural decisions. Covers:
 - Concurrency and thread safety
 - Core transition engine analysis
 
-### [Real-Time Runtime](realtime-runtime.md)
-Tick-based deterministic runtime for games, simulations, and robotics. Covers:
+### [Real-Time Runtime](../realtime/README.md)
+Tick-based deterministic runtime for games, simulations, and robotics. See the [realtime package README](../realtime/README.md) which covers:
 - Fixed time-step execution model
 - Event batching and ordering guarantees
 - Deterministic parallel region processing
