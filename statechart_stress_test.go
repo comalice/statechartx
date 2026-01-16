@@ -66,8 +66,7 @@ func TestMillionStates(t *testing.T) {
 
 	creationTime := time.Since(start)
 
-	// Force GC and measure memory
-	runtime.GC()
+	// Measure memory after creating states
 	var m2 runtime.MemStats
 	runtime.ReadMemStats(&m2)
 	finalAlloc := m2.Alloc
@@ -75,13 +74,13 @@ func TestMillionStates(t *testing.T) {
 	// Handle case where GC reduced memory below initial allocation
 	var memoryUsed float64
 	if finalAlloc > initialAlloc {
-		memoryUsed = float64(finalAlloc-initialAlloc) / (1024 * 1024 * 1024) // GB
+		memoryUsed = float64(finalAlloc-initialAlloc) / (1024 * 1024) // MB
 	} else {
-		memoryUsed = -float64(initialAlloc-finalAlloc) / (1024 * 1024 * 1024) // GB (negative indicates GC freed memory)
+		memoryUsed = -float64(initialAlloc-finalAlloc) / (1024 * 1024) // MB (negative indicates GC freed memory)
 	}
 
 	t.Logf("Created %d states in %v", totalStates, creationTime)
-	t.Logf("Memory used: %.3f GB", memoryUsed)
+	t.Logf("Memory used: %.2f MB", memoryUsed)
 	t.Logf("Average time per state: %v", creationTime/totalStates)
 
 	// Validate performance targets
@@ -89,8 +88,8 @@ func TestMillionStates(t *testing.T) {
 		t.Errorf("Creation time %v exceeds 10s target", creationTime)
 	}
 
-	if memoryUsed > 1.0 {
-		t.Errorf("Memory usage %.3f GB exceeds 1GB target", memoryUsed)
+	if memoryUsed > 1024.0 {
+		t.Errorf("Memory usage %.2f MB exceeds 1GB target", memoryUsed)
 	}
 
 	// Verify we can create a machine
@@ -421,16 +420,15 @@ func TestConcurrentStateMachines(t *testing.T) {
 	t.Logf("Processed %d events across %d machines in %v", total, numMachines, eventTime)
 	t.Logf("Throughput: %.0f events/sec", throughput)
 
+	// Measure memory while machines are still running
+	var m2 runtime.MemStats
+	runtime.ReadMemStats(&m2)
+	finalAlloc := m2.Alloc
+
 	// Stop all machines
 	for _, rt := range runtimes {
 		rt.Stop()
 	}
-
-	// Measure memory
-	runtime.GC()
-	var m2 runtime.MemStats
-	runtime.ReadMemStats(&m2)
-	finalAlloc := m2.Alloc
 
 	// Handle case where GC reduced memory below initial allocation
 	var memoryUsed float64

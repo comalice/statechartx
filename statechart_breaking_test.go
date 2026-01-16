@@ -84,22 +84,22 @@ func TestMaxStates(t *testing.T) {
 			rt.Stop()
 			break
 		}
-		rt.Stop()
 
-		// Measure memory
-		runtime.GC()
+		// Measure memory while still running
 		var m2 runtime.MemStats
 		runtime.ReadMemStats(&m2)
 
 		// Handle case where GC reduced memory below initial allocation
 		var memoryUsed float64
 		if m2.Alloc > m1.Alloc {
-			memoryUsed = float64(m2.Alloc-m1.Alloc) / (1024 * 1024 * 1024) // GB
+			memoryUsed = float64(m2.Alloc-m1.Alloc) / (1024 * 1024) // MB
 		} else {
-			memoryUsed = -float64(m1.Alloc-m2.Alloc) / (1024 * 1024 * 1024) // GB (negative indicates GC freed memory)
+			memoryUsed = -float64(m1.Alloc-m2.Alloc) / (1024 * 1024) // MB (negative indicates GC freed memory)
 		}
 
-		t.Logf("✓ Successfully created and started %d states in %v (%.2f GB)", numStates, duration, memoryUsed)
+		rt.Stop()
+
+		t.Logf("✓ Successfully created and started %d states in %v (%.2f MB)", numStates, duration, memoryUsed)
 
 		// If this took too long, stop
 		if duration > 30*time.Second {
