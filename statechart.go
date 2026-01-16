@@ -89,7 +89,11 @@ import (
         "time"
 )
 
+// StateID is a unique identifier for a state in the state machine.
 type StateID int
+
+// EventID is a unique identifier for an event type.
+// Special values: NO_EVENT (0) for eventless transitions, ANY_EVENT (-1) for wildcards.
 type EventID int
 
 const (
@@ -114,13 +118,20 @@ var (
         ErrEventQueueFull = errors.New("event queue is full")
 )
 
+// Event represents a state machine event with optional data and addressing.
+// Address=0 broadcasts to all parallel regions, non-zero targets a specific region.
 type Event struct {
         ID      EventID
         Data    any
         Address StateID // 0 = broadcast, non-zero = targeted (for parallel states)
 }
 
+// Action is a function executed during state transitions or entry/exit.
+// Returns error to abort the transition/action.
 type Action func(ctx context.Context, evt *Event, from StateID, to StateID) error
+
+// Guard is a predicate function that determines if a transition is enabled.
+// Returns (true, nil) to allow the transition, (false, nil) to block it.
 type Guard func(ctx context.Context, evt *Event, from StateID, to StateID) (bool, error)
 
 // ---
