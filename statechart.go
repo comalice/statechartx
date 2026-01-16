@@ -264,10 +264,14 @@ type parallelRegion struct {
 // Public API
 //
 
+// OnEntry sets the action to execute when entering this state.
+// Entry actions run after exiting the previous state but before entering children.
 func (s *State) OnEntry(action Action) {
         s.EntryAction = action
 }
 
+// OnExit sets the action to execute when exiting this state.
+// Exit actions run before entering the next state.
 func (s *State) OnExit(action Action) {
         s.ExitAction = action
 }
@@ -1600,7 +1604,9 @@ func (s *State) exitState(ctx context.Context, event *Event, from StateID, to St
         return nil
 }
 
-// On adds a transition to the state.
+// On adds a transition to this state triggered by the given event.
+// Target StateID of 0 means an internal transition (no exit/entry actions).
+// Guard and Action are optional (pass nil to omit).
 func (s *State) On(event EventID, target StateID, guard *Guard, action *Action) {
         t := &Transition{
                 Event:  event,
