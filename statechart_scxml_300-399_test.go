@@ -34,7 +34,10 @@ func TestSCXML309(t *testing.T) {
 }
 
 func TestSCXML310(t *testing.T) {
-        t.Skipf("SCXML310: requires parallel regions")
+	// Test simple In() predicate with parallel states
+	// The SCXML test uses a parallel state as root with two child regions (s0, s1)
+	// s0 should detect that s1 is also active via In() predicate
+	t.Skipf("SCXML310: requires In() predicate support in transition guards with parallel regions - test shows both regions aren't activated simultaneously yet")
 }
 
 func TestSCXML311(t *testing.T) {

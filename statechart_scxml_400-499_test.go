@@ -99,15 +99,15 @@ func TestSCXML403c(t *testing.T) {
 }
 
 func TestSCXML404(t *testing.T) {
-        t.Skipf("SCXML404: requires parallel states to test exit order")
+	t.Skipf("SCXML404: requires parallel state exit ordering - see realtime/scxml_parallel_test.go:TestSCXML404_Realtime for deterministic test")
 }
 
 func TestSCXML405(t *testing.T) {
-        t.Skipf("SCXML405: requires parallel states to test transition execution order")
+	t.Skipf("SCXML405: requires parallel transition execution ordering - see realtime/scxml_parallel_test.go:TestSCXML405_Realtime for deterministic test")
 }
 
 func TestSCXML406(t *testing.T) {
-        t.Skipf("SCXML406: requires parallel states to test entry order")
+	t.Skipf("SCXML406: requires parallel state entry ordering - see realtime/scxml_parallel_test.go:TestSCXML406_Realtime for deterministic test")
 }
 
 func TestSCXML407(t *testing.T) {
@@ -215,7 +215,10 @@ func TestSCXML412(t *testing.T) {
 }
 
 func TestSCXML413(t *testing.T) {
-        t.Skipf("SCXML413: requires parallel states and multiple initial state specification")
+	// Test that parallel states with multiple initial state specification
+	// This test requires support for specifying initial states in parallel regions
+	// which targets specific states within each region
+	t.Skipf("SCXML413: requires support for multiple initial state specification in parallel regions (advanced feature)")
 }
 
 func TestSCXML415(t *testing.T) {
