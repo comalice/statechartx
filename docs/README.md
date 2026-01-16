@@ -4,7 +4,11 @@ This directory contains comprehensive documentation for the StatechartX state ma
 
 ## Getting Started
 
-**New to StatechartX?** Start with the [Core Package Guide](../README_CORE.md) for API patterns, code examples, and common use cases.
+**New to StatechartX?** Start here:
+
+1. [Core Package Guide](../README_CORE.md) - API patterns, code examples, common use cases
+2. [Decision Guide](DECISION-GUIDE.md) - Choose runtime, state patterns, and implementation strategies
+3. [Examples](../examples/README.md) - Runnable code samples
 
 ## Core Documentation
 
@@ -31,6 +35,14 @@ Comprehensive performance benchmarks and optimization insights. Covers:
 - Breaking point analysis
 - Profiling results and CPU/memory hotspots
 - Production performance limits
+
+### [Decision Guide](DECISION-GUIDE.md)
+Runtime and pattern selection guide with decision tables. Covers:
+- Event-driven vs real-time runtime selection
+- State patterns (parallel, history, sequential)
+- Transition patterns (guarded, eventless, internal)
+- Event and action design patterns
+- Migration strategies and common pitfalls
 
 ### [SCXML Conformance](scxml-conformance.md)
 W3C SCXML test suite integration and conformance testing. Covers:
