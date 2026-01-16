@@ -1,8 +1,10 @@
 # StatechartX Real-Time Runtime: Architecture Design & Implementation Plan
 
-**Date:** January 2, 2026  
-**Status:** Design Document for Discussion  
-**Purpose:** Explore tick-based real-time runtime as alternative to event-driven implementation
+> **Note:** For realtime package usage and API documentation, see [realtime/README.md](../realtime/README.md). This document contains the original design specification and architectural analysis.
+
+**Date:** January 2, 2026
+**Status:** Historical Design Document
+**Purpose:** Architecture specification for tick-based real-time runtime implementation
 
 ---
 
