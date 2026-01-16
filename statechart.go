@@ -1934,7 +1934,8 @@ func (rt *Runtime) GetMachine() *Machine {
         return rt.machine
 }
 
-// GetState returns a state by ID from the machine
+// GetState retrieves a state by its ID from the machine's state lookup table.
+// Returns nil if the state ID doesn't exist.
 func (m *Machine) GetState(stateID StateID) *State {
         return m.states[stateID]
 }
