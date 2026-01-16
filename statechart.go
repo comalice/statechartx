@@ -145,6 +145,11 @@ const (
         HistoryDeep                       // Restore entire hierarchy
 )
 
+// State represents a node in the statechart hierarchy.
+// States can be atomic, compound (with children), parallel, or final.
+//
+// Advanced features: Set IsParallel=true for parallel states, or IsHistoryState=true
+// for history pseudo-states. History states record and restore previous configurations.
 type State struct {
         ID            StateID
         Transitions   []*Transition
@@ -157,7 +162,7 @@ type State struct {
         Children      map[StateID]*State
         Initial       StateID // Initial child state for compound states
         IsParallel    bool    // True if this is a parallel state (Step 13)
-        
+
         // History state support
         IsHistoryState  bool        // True if this is a history pseudo-state
         HistoryType     HistoryType // Type of history (shallow or deep)
@@ -171,6 +176,9 @@ type CompoundState struct {
         Children []*State
 }
 
+// Transition represents a state transition triggered by an event.
+// Target=0 indicates an internal transition (no exit/entry actions).
+// Guard and Action are optional (nil means no guard/action).
 type Transition struct {
         Event  EventID
         Source *State
@@ -179,7 +187,9 @@ type Transition struct {
         Action Action  // nil --> do nothing
 }
 
-// Machine is a CompoundState with helper functions for chart evaluation.
+// Machine is the top-level compound state with helper functions for chart evaluation.
+// Maintains the state hierarchy and lookup table for fast state access.
+// Use NewMachine() to create a properly initialized Machine.
 type Machine struct {
         CompoundState
         states  map[StateID]*State
@@ -206,7 +216,11 @@ type ParallelStateHooks struct {
         OnSendToRegions func(ctx context.Context, event Event) error
 }
 
-// Runtime wraps a Machine and provides event queue processing
+// Runtime manages the execution of a state machine.
+// Handles event queuing, microstep processing, parallel state coordination,
+// and history recording. Thread-safe for concurrent event submission.
+//
+// Advanced: Set ParallelHooks to customize parallel state behavior (e.g., sequential processing).
 type Runtime struct {
         machine    *Machine
         ext        any // extended state
