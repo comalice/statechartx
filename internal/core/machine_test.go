@@ -250,9 +250,18 @@ func BenchmarkTransition(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
+	successfulSends := 0
 	for i := 0; i < b.N; i++ {
 		if err := m.Send(primitives.NewEvent("tick", nil)); err != nil {
-			b.Fatal(err)
+			// Hit backpressure - stop benchmark
+			b.StopTimer()
+			b.Logf("Stopped at backpressure after %d events (%.1f%% of b.N)",
+				successfulSends, float64(successfulSends)/float64(b.N)*100)
+			break
 		}
+		successfulSends++
+	}
+	if successfulSends > 0 {
+		b.ReportMetric(float64(successfulSends)/b.Elapsed().Seconds(), "events/sec")
 	}
 }

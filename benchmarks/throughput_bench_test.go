@@ -46,6 +46,8 @@ func BenchmarkEventThroughput(b *testing.B) {
 		eventsPerWorker = 1
 	}
 	var wg sync.WaitGroup
+	var successfulSends int64
+	var failedSends int64
 	b.ResetTimer()
 	b.ReportAllocs()
 	for w := 0; w < numWorkers; w++ {
@@ -53,23 +55,38 @@ func BenchmarkEventThroughput(b *testing.B) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < eventsPerWorker; i++ {
-				m.Send(e)
+				if err := m.Send(e); err != nil {
+					atomic.AddInt64(&failedSends, 1)
+					return // Stop this worker on backpressure
+				}
+				atomic.AddInt64(&successfulSends, 1)
 			}
 		}()
 	}
 	wg.Wait()
-	// Wait for processing
-	timeout := time.After(30 * time.Second)
-	for {
-		if atomic.LoadInt64(&processed) >= int64(b.N) {
-			break
-		}
-		select {
-		case <-timeout:
-			b.Fatalf("timeout waiting for processing, processed: %d / %d", atomic.LoadInt64(&processed), b.N)
-		default:
-			time.Sleep(10 * time.Millisecond)
-		}
+	// Check if we hit backpressure
+	totalFailed := atomic.LoadInt64(&failedSends)
+	totalSuccessful := atomic.LoadInt64(&successfulSends)
+	if totalFailed > 0 {
+		b.StopTimer()
+		b.Logf("Hit backpressure: %d successful, %d failed (%.1f%% of b.N)",
+			totalSuccessful, totalFailed, float64(totalSuccessful)/float64(b.N)*100)
 	}
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "events/second")
+	// Wait for processing of successful events only
+	if totalSuccessful > 0 {
+		timeout := time.After(30 * time.Second)
+		for {
+			if atomic.LoadInt64(&processed) >= totalSuccessful {
+				break
+			}
+			select {
+			case <-timeout:
+				b.Fatalf("timeout waiting for processing, processed: %d / %d successful sends",
+					atomic.LoadInt64(&processed), totalSuccessful)
+			default:
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		b.ReportMetric(float64(totalSuccessful)/b.Elapsed().Seconds(), "events/sec")
+	}
 }

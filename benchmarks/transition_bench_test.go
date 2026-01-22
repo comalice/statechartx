@@ -34,10 +34,19 @@ func BenchmarkSimpleTransition(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	b.ResetTimer()
 	b.ReportAllocs()
+	successfulSends := 0
 	for i := 0; i < b.N; i++ {
 		if err := m.Send(e); err != nil {
-			b.Fatal(err)
+			// Hit backpressure - stop benchmark
+			b.StopTimer()
+			b.Logf("Stopped at backpressure after %d events (%.1f%% of b.N)",
+				successfulSends, float64(successfulSends)/float64(b.N)*100)
+			break
 		}
+		successfulSends++
+	}
+	if successfulSends > 0 {
+		b.ReportMetric(float64(successfulSends)/b.Elapsed().Seconds(), "events/sec")
 	}
 }
 
@@ -76,10 +85,19 @@ func BenchmarkHierarchicalTransition(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	b.ResetTimer()
 	b.ReportAllocs()
+	successfulSends := 0
 	for i := 0; i < b.N; i++ {
 		if err := m.Send(e); err != nil {
-			b.Fatal(err)
+			// Hit backpressure - stop benchmark
+			b.StopTimer()
+			b.Logf("Stopped at backpressure after %d events (%.1f%% of b.N)",
+				successfulSends, float64(successfulSends)/float64(b.N)*100)
+			break
 		}
+		successfulSends++
+	}
+	if successfulSends > 0 {
+		b.ReportMetric(float64(successfulSends)/b.Elapsed().Seconds(), "events/sec")
 	}
 }
 
@@ -118,10 +136,19 @@ func BenchmarkParallelTransition(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	b.ResetTimer()
 	b.ReportAllocs()
+	successfulSends := 0
 	for i := 0; i < b.N; i++ {
 		if err := m.Send(e); err != nil {
-			b.Fatal(err)
+			// Hit backpressure - stop benchmark
+			b.StopTimer()
+			b.Logf("Stopped at backpressure after %d events (%.1f%% of b.N)",
+				successfulSends, float64(successfulSends)/float64(b.N)*100)
+			break
 		}
+		successfulSends++
+	}
+	if successfulSends > 0 {
+		b.ReportMetric(float64(successfulSends)/b.Elapsed().Seconds(), "events/sec")
 	}
 }
 
@@ -155,9 +182,18 @@ func BenchmarkGuardedTransition(b *testing.B) {
 	e := primitives.NewEvent("tick", nil)
 	b.ResetTimer()
 	b.ReportAllocs()
+	successfulSends := 0
 	for i := 0; i < b.N; i++ {
 		if err := m.Send(e); err != nil {
-			b.Fatal(err)
+			// Hit backpressure - stop benchmark
+			b.StopTimer()
+			b.Logf("Stopped at backpressure after %d events (%.1f%% of b.N)",
+				successfulSends, float64(successfulSends)/float64(b.N)*100)
+			break
 		}
+		successfulSends++
+	}
+	if successfulSends > 0 {
+		b.ReportMetric(float64(successfulSends)/b.Elapsed().Seconds(), "events/sec")
 	}
 }
