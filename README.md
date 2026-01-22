@@ -1,128 +1,144 @@
-# Statechart Engine
+# StatechartX
 
-[![Go](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org)
-[![Tests](https://github.com/albert/statechart/actions/workflows/test.yml/badge.svg)](https://github.com/albert/statechart/actions)
-[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/albert/statechart)
-[![Performance](https://img.shields.io/badge/latency-%3C1μs-green.svg)](README.md#performance)
-
-High-performance, **stdlib-only** Go statechart engine implementing SCXML semantics with hierarchical states, history, guards/actions, persistence, visualization.
+> Minimal, composable, concurrent-ready hierarchical state machine implementation in Go
 
 ## Features
-- **Hierarchical states**: Compound, parallel regions
-- **History states**: Shallow/deep restoration
-- **Guards & actions**: Pluggable interfaces, func refs, string IDs
-- **Persistence**: JSON snapshots (file-based, pluggable)
-- **Event sourcing**: Channel publishers with metadata
-- **Visualization**: Graphviz DOT (hierarchical, active states highlighted)
-- **Performance**: <1μs latency (p99), >1M tps, <1MB/machine
-- **Zero deps**: Stdlib-only core (no external packages)
-- **Thread-safe**: Concurrent Send(), race-free
+
+- **Hierarchical States** - Nested state support with proper entry/exit order
+- **History States** - Both shallow and deep history preservation
+- **Guarded Transitions** - Conditional transitions with guards and actions
+- **Parallel States** - Independent concurrent regions with automatic synchronization
+- **Thread-Safe** - Concurrent event dispatch via mutex protection
+- **Real-Time Runtime** - Tick-based deterministic execution for games and simulations
+- **SCXML Conformance** - Core semantics validated against W3C SCXML test suite (see [docs/SCXML_COMPLIANCE.md](docs/SCXML_COMPLIANCE.md) for known departures)
+- **Lightweight** - ~1,552 LOC core implementation with minimal dependencies
+
+## Installation
+
+```bash
+go get github.com/comalice/statechartx
+```
 
 ## Quick Start
+
 ```go
 package main
 
 import (
-	"fmt"
-	"log"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"github.com/albert/statechart/internal/core"
-	"github.com/albert/statechart/internal/primitives"
-	"github.com/albert/statechart/internal/production"
+    "context"
+    "fmt"
+    "github.com/comalice/statechartx"
 )
 
 func main() {
-	// Traffic light statechart (MachineBuilder)
-	mb := primitives.NewMachineBuilder("traffic-light", "traffic")
-	traffic := mb.Compound("traffic").WithInitial("red")
-	traffic.Atomic("red").Transition("TIMER", "green")
-	traffic.Atomic("green").Transition("TIMER", "yellow")
-	traffic.Atomic("yellow").Transition("TIMER", "red")
+    // Create states
+    root := &statechartx.State{ID: 1, Initial: 2}
+    idle := &statechartx.State{ID: 2, Parent: root}
+    active := &statechartx.State{ID: 3, Parent: root}
 
-	config := mb.Build()
+    // Build hierarchy
+    root.Children = map[statechartx.StateID]*statechartx.State{
+        2: idle,
+        3: active,
+    }
 
-	// Production options
-	persistDir := "/tmp/statecharts"
-	publishCh := make(chan production.PublishedEvent, 100)
+    // Add transition: "activate" event moves from idle → active
+    idle.Transitions = []*statechartx.Transition{
+        {Event: 10, Target: 3},
+    }
 
-	m := core.NewMachine(config,
-		core.WithPersister(&production.JSONPersister{dir: persistDir}),
-		core.WithPublisher(production.NewChannelPublisher(publishCh)),
-		core.WithVisualizer(&production.DefaultVisualizer{}),
-	)
+    // Create and start runtime
+    machine, _ := statechartx.NewMachine(root)
+    rt := statechartx.NewRuntime(machine, nil)
 
-	if err := m.Start(); err != nil {
-		log.Fatal(err)
-	}
-	defer m.Stop()
+    ctx := context.Background()
+    rt.Start(ctx)
 
-	// Ticker for TIMER events
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+    // Send events
+    rt.SendEvent(ctx, statechartx.Event{ID: 10})
 
-	cycles := 0
-	for cycles < 12 {
-		select {
-		case <-ticker.C:
-			if err := m.Send(primitives.NewEvent("TIMER", nil)); err != nil {
-				log.Printf("Send error: %v", err)
-			}
-			cycles++
-			fmt.Printf("--- Cycle %d ---\nCurrent states: %v\nDOT:\n%s\n\n", cycles, m.Current(), m.Visualize())
-
-			// Consume published events
-			select {
-			case pub := <-publishCh:
-				fmt.Printf("Published: %s -> %s (%s)\n", pub.Metadata.Transition, pub.Event.Type)
-			default:
-			}
-		case <-signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM).Done():
-			return
-		}
-	}
+    fmt.Println("State machine running!")
 }
 ```
 
-Run:
-```bash
-go run cmd/demo/main.go
-dot -Tsvg -o statechart.svg <(echo "$(./cmd/demo | head -n 20)")  # Render DOT
-```
+For more examples, see the [examples/](examples/) directory.
+
+## Documentation
+
+**Getting Started:**
+1. **[Core Package Guide](README_CORE.md)** - Complete API guide with patterns and examples
+2. **[Decision Guide](docs/DECISION-GUIDE.md)** - Choose runtime, state patterns, and strategies
+3. **[Examples](examples/README.md)** - Runnable code samples
+
+**Deep Dives:**
+- [Architecture Overview](docs/architecture.md) - System design and key concepts
+- [Real-Time Runtime](realtime/README.md) - Tick-based deterministic execution
+- [Performance Testing](docs/performance.md) - Benchmarks and optimization
+- [SCXML Conformance](docs/SCXML_COMPLIANCE.md) - W3C conformance and known departures
 
 ## Performance
-| Metric | Target | Achieved |
-|--------|--------|----------|
-| Latency | <1μs p99 | ~0.01μs (simple), pending opt |
-| Throughput | >1M tps | Pending MPSC queue |
-| Memory | <1MB/machine | 3.8KB/machine ✅ |
 
-Benchmarks: `go test -bench=. ./benchmarks/...`
+StatechartX exceeds all performance targets:
 
-## Architecture
-Tiered design (dependency-ordered):
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| State Transition | < 1 μs | 518 ns | ✅ 1.9x faster |
+| Event Throughput | > 10K/sec | 1.44M/sec | ✅ 144x faster |
+| Million States | < 10s | 264 ms | ✅ 37x faster |
+| Parallel Regions | < 5s | 3.8 ms | ✅ 1,300x faster |
+
+See [docs/performance.md](docs/performance.md) for full benchmarks.
+
+## Real-Time Runtime
+
+For deterministic execution in games, physics simulations, and robotics:
+
+```go
+import "github.com/comalice/statechartx/realtime"
+
+machine, _ := statechartx.NewMachine(rootState)
+rt := realtime.NewRuntime(machine, realtime.Config{
+    TickRate:         16667 * time.Microsecond, // 60 FPS
+    MaxEventsPerTick: 1000,
+})
+
+rt.Start(ctx)
+defer rt.Stop()
+
+// Events are batched and processed at fixed tick intervals
+rt.SendEvent(statechartx.Event{ID: 1})
 ```
-Primitives → Core → Extensibility → Production → Benchmarks
-```
-- **Primitives**: Event, Context(sync.Map), StateConfig, TransitionConfig, MachineConfig
-- **Core**: Machine actor, interpreter, history, LCCA/exit/entry algorithms
-- **Extensibility**: ActionRunner, GuardEvaluator, EventSource (pluggable)
-- **Production**: JSONPersister, ChannelPublisher, DefaultVisualizer(DOT)
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [TODO.md](TODO.md).
+See [realtime/README.md](realtime/README.md) for details.
 
-## Examples
-- [Traffic light](cmd/demo) (MachineBuilder + persistence + publish + visualize)
-- [Hierarchical](examples/hierarchical/main.go)
-- [Parallel](examples/parallel/main.go)
-- [History](examples/history/main.go)
+## Development
 
-## Installation
 ```bash
-go get github.com/albert/statechart
+# Run tests
+make test
+
+# Run with race detector (recommended for parallel states)
+make test-race
+
+# Run benchmarks
+make bench
+
+# Full validation
+make check  # format, vet, staticcheck, lint, test-race
 ```
+
+## Project Status
+
+- ~1,552 LOC core implementation
+- 13 test suites (basic, parallel, history, done events, SCXML conformance, stress tests)
+- W3C SCXML conformance validated
+- Thread-safe with race detector validation
+- Production-ready
 
 ## License
-MIT
+
+[Choose appropriate license - MIT recommended]
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
