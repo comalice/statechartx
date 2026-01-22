@@ -1,0 +1,69 @@
+goos: linux
+goarch: amd64
+pkg: github.com/comalice/statechartx/benchmarks
+cpu: Intel(R) Core(TM) i5-5300U CPU @ 2.30GHz
+BenchmarkMemoryFootprint-4          	1000000000	         0.02496 ns/op	         0.03172 MB/machine	       0 B/op	       0 allocs/op
+BenchmarkRealtimeThroughput-4       	1000000000	         0.0009884 ns/op	  10117249 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkRealtimeThroughput-4
+    realtime_bench_test.go:128: Stopped at backpressure after 10000 events (1.9% of b.N)
+    realtime_bench_test.go:128: Stopped at backpressure after 18313 events (0.0% of b.N)
+    realtime_bench_test.go:128: Stopped at backpressure after 10000 events (0.0% of b.N)
+BenchmarkRealtimeLatency-4          	     100	  50005488 ns/op	         1.000 ms/latency	   1264985 ns/latency	      1264 µs/latency	 2178483 B/op	     225 allocs/op
+--- BENCH: BenchmarkRealtimeLatency-4
+    realtime_bench_test.go:240: timeout after 25/50 measurements
+BenchmarkRealtimeQueueCapacity/60FPS-4         	1000000000	         0.001801 ns/op	     10000 events	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkRealtimeQueueCapacity/60FPS-4
+    realtime_bench_test.go:298: Sent all 1 events without backpressure
+    realtime_bench_test.go:298: Sent all 100 events without backpressure
+    realtime_bench_test.go:298: Sent all 10000 events without backpressure
+    realtime_bench_test.go:289: Queue capacity reached: 10000 events before backpressure
+    realtime_bench_test.go:289: Queue capacity reached: 10000 events before backpressure
+    realtime_bench_test.go:289: Queue capacity reached: 10000 events before backpressure
+BenchmarkRealtimeQueueCapacity/1000Hz-4        	1000000000	         0.0005752 ns/op	     10000 events	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkRealtimeQueueCapacity/1000Hz-4
+    realtime_bench_test.go:298: Sent all 1 events without backpressure
+    realtime_bench_test.go:298: Sent all 100 events without backpressure
+    realtime_bench_test.go:298: Sent all 10000 events without backpressure
+    realtime_bench_test.go:289: Queue capacity reached: 10000 events before backpressure
+    realtime_bench_test.go:289: Queue capacity reached: 10000 events before backpressure
+    realtime_bench_test.go:289: Queue capacity reached: 10000 events before backpressure
+BenchmarkRealtimeTickProcessing-4              	      75	  15543441 ns/op	       100.0 events/tick	    253393 ns/tick	       253.0 µs/tick	   96320 B/op	     907 allocs/op
+BenchmarkEventThroughput-4                     	1000000000	         0.003852 ns/op	   2794257 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkEventThroughput-4
+    throughput_bench_test.go:72: Hit backpressure: 10307 successful, 8 failed (2.9% of b.N)
+    throughput_bench_test.go:72: Hit backpressure: 10001 successful, 8 failed (0.0% of b.N)
+    throughput_bench_test.go:72: Hit backpressure: 10763 successful, 8 failed (0.0% of b.N)
+BenchmarkSimpleTransition-4                    	1000000000	         0.01148 ns/op	   8909160 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkSimpleTransition-4
+    transition_bench_test.go:42: Stopped at backpressure after 101840 events (10.2% of b.N)
+    transition_bench_test.go:42: Stopped at backpressure after 100925 events (0.1% of b.N)
+    transition_bench_test.go:42: Stopped at backpressure after 102243 events (0.0% of b.N)
+BenchmarkHierarchicalTransition-4              	1000000000	         0.01828 ns/op	   5471751 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkHierarchicalTransition-4
+    transition_bench_test.go:93: Stopped at backpressure after 100656 events (10.1% of b.N)
+    transition_bench_test.go:93: Stopped at backpressure after 100000 events (0.2% of b.N)
+    transition_bench_test.go:93: Stopped at backpressure after 100000 events (0.0% of b.N)
+BenchmarkParallelTransition-4                  	1000000000	         0.03110 ns/op	   3224036 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkParallelTransition-4
+    transition_bench_test.go:144: Stopped at backpressure after 100509 events (10.1% of b.N)
+    transition_bench_test.go:144: Stopped at backpressure after 100359 events (0.1% of b.N)
+    transition_bench_test.go:144: Stopped at backpressure after 100272 events (0.0% of b.N)
+BenchmarkGuardedTransition-4                   	1000000000	         0.04238 ns/op	   2410682 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkGuardedTransition-4
+    transition_bench_test.go:190: Stopped at backpressure after 100000 events (10.0% of b.N)
+    transition_bench_test.go:190: Stopped at backpressure after 100001 events (0.1% of b.N)
+    transition_bench_test.go:190: Stopped at backpressure after 102174 events (0.0% of b.N)
+PASS
+ok  	github.com/comalice/statechartx/benchmarks	10.521s
+goos: linux
+goarch: amd64
+pkg: github.com/comalice/statechartx/internal/core
+cpu: Intel(R) Core(TM) i5-5300U CPU @ 2.30GHz
+BenchmarkTransition-4   	1000000000	         0.0000373 ns/op	  26837712 events/sec	       0 B/op	       0 allocs/op
+--- BENCH: BenchmarkTransition-4
+    machine_test.go:258: Stopped at backpressure after 1000 events (10.0% of b.N)
+    machine_test.go:258: Stopped at backpressure after 1000 events (0.1% of b.N)
+    machine_test.go:258: Stopped at backpressure after 1000 events (0.0% of b.N)
+    machine_test.go:258: Stopped at backpressure after 1000 events (0.0% of b.N)
+PASS
+ok  	github.com/comalice/statechartx/internal/core	0.413s

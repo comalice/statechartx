@@ -1,0 +1,9 @@
+# Track the baseline
+!baseline.txt
+
+# Ignore dated snapshots (can be committed manually if desired)
+????-??-??.txt
+
+# Ignore comparison files
+old.txt
+new.txt
