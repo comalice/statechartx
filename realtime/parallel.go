@@ -149,8 +149,6 @@ func (rt *RealtimeRuntime) enterParallelState(ctx context.Context, state *statec
 	// So we wrap the ExitAction to call our region exit logic
 	originalExitAction := state.ExitAction
 	state.ExitAction = func(ctx context.Context, event *statechartx.Event, from, to statechartx.StateID) error {
-		// DEBUG
-
 		// NOTE: Don't need to set inMacrostep here - it should already be set by the caller
 		// (either processMacrostepToCompletion or the explicit setting before Runtime calls)
 
