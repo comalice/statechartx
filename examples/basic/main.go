@@ -20,15 +20,16 @@ const (
 
 // Event IDs
 const (
-	ActivateEvent statechartx.EventID = 10
+	ActivateEvent   statechartx.EventID = 10
 	DeactivateEvent statechartx.EventID = 11
-	ErrorEvent    statechartx.EventID = 12
-	ResetEvent    statechartx.EventID = 13
+	ErrorEvent      statechartx.EventID = 12
+	ResetEvent      statechartx.EventID = 13
 )
 
 func main() {
 	fmt.Println("StatechartX Basic Example")
-	fmt.Println("==========================\n")
+	fmt.Println("==========================")
+	fmt.Println()
 
 	// Create the state machine hierarchy
 	machine := createStateMachine()
@@ -41,7 +42,8 @@ func main() {
 	rt.Start(ctx)
 	defer rt.Stop()
 
-	fmt.Println("State machine started\n")
+	fmt.Println("State machine started")
+	fmt.Println()
 
 	// Scenario: Normal operation cycle
 	fmt.Println("--- Scenario 1: Normal Operation ---")

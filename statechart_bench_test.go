@@ -9,8 +9,8 @@ import (
 // Target: < 1μs per transition
 func BenchmarkStateTransition(b *testing.B) {
 	const (
-		STATE1 StateID = 1
-		STATE2 StateID = 2
+		STATE1   StateID = 1
+		STATE2   StateID = 2
 		EVENT_GO EventID = 1
 	)
 
@@ -91,7 +91,7 @@ func BenchmarkLCAComputation(b *testing.B) {
 	parent := &State{ID: 2, Parent: root, Children: make(map[StateID]*State)}
 	child1 := &State{ID: 3, Parent: parent}
 	child2 := &State{ID: 4, Parent: parent}
-	
+
 	root.Children[parent.ID] = parent
 	parent.Children[child1.ID] = child1
 	parent.Children[child2.ID] = child2
@@ -131,7 +131,7 @@ func BenchmarkLCAComputationDeep(b *testing.B) {
 func BenchmarkParallelRegionSpawn(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		
+
 		root := &State{
 			ID:         1,
 			IsParallel: true,
@@ -172,7 +172,7 @@ func BenchmarkParallelRegionSpawn(b *testing.B) {
 func BenchmarkParallelRegionSpawn100(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		
+
 		root := &State{
 			ID:         1,
 			IsParallel: true,
@@ -211,7 +211,7 @@ func BenchmarkParallelRegionSpawn100(b *testing.B) {
 // BenchmarkEventRouting measures event routing time across parallel regions
 func BenchmarkEventRouting(b *testing.B) {
 	const EVENT1 EventID = 1
-	
+
 	root := &State{
 		ID:         1,
 		IsParallel: true,
@@ -225,12 +225,12 @@ func BenchmarkEventRouting(b *testing.B) {
 			Parent:   root,
 			Children: make(map[StateID]*State),
 		}
-		
+
 		state1 := &State{ID: StateID(i*2 + 100), Parent: region, Transitions: []*Transition{}}
 		state2 := &State{ID: StateID(i*2 + 101), Parent: region, Transitions: []*Transition{}}
-		
+
 		state1.Transitions = append(state1.Transitions, &Transition{Event: EVENT1, Source: state1, Target: state2.ID})
-		
+
 		region.Children[state1.ID] = state1
 		region.Children[state2.ID] = state2
 		region.Initial = state1.ID
@@ -258,12 +258,12 @@ func BenchmarkEventRouting(b *testing.B) {
 // BenchmarkHistoryRestoration measures history state restoration time
 func BenchmarkHistoryRestoration(b *testing.B) {
 	const (
-		PARENT  StateID = 1
-		CHILD1  StateID = 2
-		CHILD2  StateID = 3
-		OUTSIDE StateID = 4
-		EVENT_OUT EventID = 1
-		EVENT_BACK EventID = 2
+		PARENT       StateID = 1
+		CHILD1       StateID = 2
+		CHILD2       StateID = 3
+		OUTSIDE      StateID = 4
+		EVENT_OUT    EventID = 1
+		EVENT_BACK   EventID = 2
 		EVENT_TOGGLE EventID = 3
 	)
 
@@ -274,18 +274,18 @@ func BenchmarkHistoryRestoration(b *testing.B) {
 		HistoryType:    HistoryShallow,
 		Initial:        CHILD1,
 	}
-	
+
 	child1 := &State{ID: CHILD1, Parent: parent, Transitions: []*Transition{}}
 	child2 := &State{ID: CHILD2, Parent: parent, Transitions: []*Transition{}}
 	outside := &State{ID: OUTSIDE, Transitions: []*Transition{}}
-	
+
 	child1.Transitions = append(child1.Transitions, &Transition{Event: EVENT_OUT, Source: child1, Target: OUTSIDE})
 	child1.Transitions = append(child1.Transitions, &Transition{Event: EVENT_TOGGLE, Source: child1, Target: CHILD2})
 	outside.Transitions = append(outside.Transitions, &Transition{Event: EVENT_BACK, Source: outside, Target: PARENT})
-	
+
 	parent.Children[CHILD1] = child1
 	parent.Children[CHILD2] = child2
-	
+
 	root := &State{
 		ID:       100,
 		Initial:  PARENT,
@@ -341,7 +341,7 @@ func BenchmarkTransitionCreation(b *testing.B) {
 		ID:       1,
 		Children: make(map[StateID]*State),
 	}
-	
+
 	states := make([]*State, 100)
 	for i := 0; i < 100; i++ {
 		states[i] = &State{
@@ -368,10 +368,10 @@ func BenchmarkTransitionCreation(b *testing.B) {
 // BenchmarkComplexStatechart measures performance of a realistic complex statechart
 func BenchmarkComplexStatechart(b *testing.B) {
 	const EVENT_NEXT EventID = 1
-	
+
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		
+
 		root := &State{
 			ID:         1,
 			IsParallel: true,
@@ -379,7 +379,7 @@ func BenchmarkComplexStatechart(b *testing.B) {
 		}
 
 		stateID := StateID(2)
-		
+
 		// Create a complex structure: 5 parallel regions, each with 10 states
 		for r := 0; r < 5; r++ {
 			region := &State{
@@ -389,7 +389,7 @@ func BenchmarkComplexStatechart(b *testing.B) {
 			}
 			root.Children[stateID] = region
 			stateID++
-			
+
 			states := make([]*State, 10)
 			for s := 0; s < 10; s++ {
 				states[s] = &State{
@@ -400,13 +400,13 @@ func BenchmarkComplexStatechart(b *testing.B) {
 				region.Children[stateID] = states[s]
 				stateID++
 			}
-			
+
 			// Add transitions
 			for s := 0; s < 9; s++ {
-				states[s].Transitions = append(states[s].Transitions, 
+				states[s].Transitions = append(states[s].Transitions,
 					&Transition{Event: EVENT_NEXT, Source: states[s], Target: states[s+1].ID})
 			}
-			
+
 			region.Initial = states[0].ID
 		}
 
@@ -417,7 +417,7 @@ func BenchmarkComplexStatechart(b *testing.B) {
 
 		rt := NewRuntime(machine, nil)
 		ctx := context.Background()
-		
+
 		b.StartTimer()
 		if err := rt.Start(ctx); err != nil {
 			b.Fatalf("Failed to start: %v", err)
@@ -427,7 +427,7 @@ func BenchmarkComplexStatechart(b *testing.B) {
 		for j := 0; j < 10; j++ {
 			rt.SendEvent(ctx, Event{ID: EVENT_NEXT})
 		}
-		
+
 		rt.Stop()
 	}
 }

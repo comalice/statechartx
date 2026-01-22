@@ -37,7 +37,7 @@ func TestMillionStates(t *testing.T) {
 	}
 
 	stateID := StateID(2)
-	
+
 	// Create parallel regions
 	for r := 0; r < numRegions; r++ {
 		region := &State{
@@ -47,7 +47,7 @@ func TestMillionStates(t *testing.T) {
 		}
 		root.Children[stateID] = region
 		stateID++
-		
+
 		// Add states to each region
 		var firstChild StateID
 		for s := 0; s < statesPerRegion; s++ {
@@ -98,7 +98,7 @@ func TestMillionStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
-	
+
 	rt := NewRuntime(machine, nil)
 	ctx := context.Background()
 	err = rt.Start(ctx)
@@ -107,7 +107,7 @@ func TestMillionStates(t *testing.T) {
 	}
 	startupTime := time.Since(startTime)
 	t.Logf("Startup time: %v", startupTime)
-	
+
 	rt.Stop()
 }
 
@@ -224,7 +224,7 @@ func TestMassiveParallelRegions(t *testing.T) {
 		region.Children[state1.ID] = state1
 		region.Children[state2.ID] = state2
 		region.Initial = state1.ID
-		
+
 		root.Children[regionID] = region
 	}
 
@@ -242,7 +242,7 @@ func TestMassiveParallelRegions(t *testing.T) {
 		t.Fatalf("Failed to start runtime: %v", err)
 	}
 	defer rt.Stop()
-	
+
 	startupTime := time.Since(start)
 
 	t.Logf("Started %d parallel regions in %v", numRegions, startupTime)
@@ -273,15 +273,15 @@ func TestDeepHierarchy(t *testing.T) {
 
 	// Create deep hierarchy
 	start := time.Now()
-	
+
 	root := &State{
 		ID:       1,
 		Children: make(map[StateID]*State),
 	}
-	
+
 	currentState := root
 	stateID := StateID(2)
-	
+
 	for i := 0; i < depth; i++ {
 		child := &State{
 			ID:       stateID,
@@ -293,7 +293,7 @@ func TestDeepHierarchy(t *testing.T) {
 		currentState = child
 		stateID++
 	}
-	
+
 	creationTime := time.Since(start)
 
 	t.Logf("Created %d-level deep hierarchy in %v", depth, creationTime)
@@ -312,7 +312,7 @@ func TestDeepHierarchy(t *testing.T) {
 		t.Fatalf("Failed to start runtime: %v", err)
 	}
 	defer rt.Stop()
-	
+
 	startupTime := time.Since(startTime)
 
 	t.Logf("Started deep hierarchy in %v", startupTime)
@@ -349,20 +349,20 @@ func TestConcurrentStateMachines(t *testing.T) {
 	// Create state machines
 	start := time.Now()
 	runtimes := make([]*Runtime, numMachines)
-	
+
 	const (
-		STATE1 StateID = 1
-		STATE2 StateID = 2
+		STATE1       StateID = 1
+		STATE2       StateID = 2
 		EVENT_TOGGLE EventID = 1
 	)
-	
+
 	for i := 0; i < numMachines; i++ {
 		state1 := &State{ID: STATE1, Transitions: []*Transition{}}
 		state2 := &State{ID: STATE2, Transitions: []*Transition{}}
-		
+
 		state1.Transitions = append(state1.Transitions, &Transition{Event: EVENT_TOGGLE, Source: state1, Target: STATE2})
 		state2.Transitions = append(state2.Transitions, &Transition{Event: EVENT_TOGGLE, Source: state2, Target: STATE1})
-		
+
 		root := &State{
 			ID:       100,
 			Initial:  STATE1,
@@ -370,12 +370,12 @@ func TestConcurrentStateMachines(t *testing.T) {
 		}
 		state1.Parent = root
 		state2.Parent = root
-		
+
 		machine, err := NewMachine(root)
 		if err != nil {
 			t.Fatalf("Failed to create machine %d: %v", i, err)
 		}
-		
+
 		rt := NewRuntime(machine, nil)
 		runtimes[i] = rt
 	}

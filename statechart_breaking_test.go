@@ -118,8 +118,8 @@ func TestMaxEventThroughput(t *testing.T) {
 	t.Log("Starting TestMaxEventThroughput...")
 
 	const (
-		STATE1 StateID = 1
-		STATE2 StateID = 2
+		STATE1       StateID = 1
+		STATE2       StateID = 2
 		EVENT_TOGGLE EventID = 1
 	)
 
@@ -203,13 +203,13 @@ func TestMaxParallelRegions(t *testing.T) {
 				Children: make(map[StateID]*State),
 			}
 			stateID++
-			
+
 			state := &State{
 				ID:     stateID,
 				Parent: region,
 			}
 			stateID++
-			
+
 			region.Children[state.ID] = state
 			region.Initial = state.ID
 			root.Children[region.ID] = region
@@ -276,7 +276,7 @@ func TestMaxHierarchyDepth(t *testing.T) {
 		createStart := time.Now()
 		current := root
 		stateID := StateID(2)
-		
+
 		for i := 0; i < depth; i++ {
 			child := &State{
 				ID:       stateID,
@@ -346,8 +346,8 @@ func TestMemoryPressure(t *testing.T) {
 	var m runtime.MemStats
 
 	const (
-		STATE1 StateID = 1
-		STATE2 StateID = 2
+		STATE1  StateID = 1
+		STATE2  StateID = 2
 		ROOT_ID StateID = 1000
 	)
 
