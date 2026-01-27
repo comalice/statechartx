@@ -376,6 +376,11 @@ func (m *Machine) findDeepestInitial(stateID StateID) StateID {
 //
 // The returned runtime is ready to be started with Start().
 func NewRuntime(machine *Machine, ext any) *Runtime {
+	// Auto-create Context if ext is nil for convenience
+	if ext == nil {
+		ext = NewContext()
+	}
+
 	return &Runtime{
 		machine:           machine,
 		ext:               ext,
@@ -386,6 +391,15 @@ func NewRuntime(machine *Machine, ext any) *Runtime {
 		deepHistory:       make(map[StateID][]StateID),
 		doneEventsPending: make(map[StateID]bool),
 	}
+}
+
+// Ctx returns the Context if the Runtime was created with one (or auto-created via nil ext).
+// Returns nil if ext is not a Context, allowing custom ext usage to coexist.
+func (rt *Runtime) Ctx() *Context {
+	if ctx, ok := rt.ext.(*Context); ok {
+		return ctx
+	}
+	return nil
 }
 
 // Start initializes the runtime and enters the initial state configuration.
