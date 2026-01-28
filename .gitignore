@@ -12,5 +12,12 @@ profile_results/
 # Build artifacts
 *.out
 
+# Benchmark comparison files
+old.txt
+new.txt
+
 # Temporary files
 .abacus.donotdelete
+
+.claude/
+.vscode/

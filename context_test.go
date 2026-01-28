@@ -1,6 +1,7 @@
 package statechartx_test
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -225,5 +226,145 @@ func TestContextDeleteNonExistent(t *testing.T) {
 	ctx.Set("key", "value")
 	if ctx.Get("key") != "value" {
 		t.Error("context should still work after deleting non-existent key")
+	}
+}
+
+// ==================== FromContext Tests ====================
+
+func TestFromContext_WithoutContext(t *testing.T) {
+	goCtx := context.Background()
+	retrieved := FromContext(goCtx)
+	if retrieved != nil {
+		t.Fatal("expected nil context when not stored")
+	}
+}
+
+func TestFromContext_WithNilContext(t *testing.T) {
+	retrieved := FromContext(nil)
+	if retrieved != nil {
+		t.Fatal("expected nil context when passed nil")
+	}
+}
+
+func TestContextInEntryActionSimple(t *testing.T) {
+	var capturedCtx *Context
+
+	root := &State{
+		ID: 1,
+		EntryAction: func(ctx context.Context, evt *Event, from StateID, to StateID) error {
+			capturedCtx = FromContext(ctx)
+			return nil
+		},
+	}
+
+	machine, err := NewMachine(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rt := NewRuntime(machine, nil)
+	if err := rt.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Stop()
+
+	if capturedCtx == nil {
+		t.Fatal("entry action did not receive context")
+	}
+
+	// Verify the context is the runtime's context
+	if capturedCtx != rt.Ctx() {
+		t.Fatal("captured context is not the runtime's context")
+	}
+}
+
+func TestContextInCompoundState(t *testing.T) {
+	var parentCtx, childCtx *Context
+
+	child := &State{
+		ID: 2,
+		EntryAction: func(ctx context.Context, evt *Event, from StateID, to StateID) error {
+			childCtx = FromContext(ctx)
+			return nil
+		},
+	}
+
+	parent := &State{
+		ID:      1,
+		Initial: 2,
+		Children: map[StateID]*State{
+			2: child,
+		},
+		EntryAction: func(ctx context.Context, evt *Event, from StateID, to StateID) error {
+			parentCtx = FromContext(ctx)
+			return nil
+		},
+	}
+	child.Parent = parent
+
+	machine, err := NewMachine(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rt := NewRuntime(machine, nil)
+	if err := rt.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Stop()
+
+	if parentCtx == nil {
+		t.Fatal("parent entry action did not receive context")
+	}
+	if childCtx == nil {
+		t.Fatal("child entry action did not receive context")
+	}
+	if parentCtx != childCtx {
+		t.Fatal("parent and child should receive same context")
+	}
+}
+
+func TestContextPreservesValues(t *testing.T) {
+	var capturedCtx *Context
+
+	// Create context with initial values
+	initialCtx := NewContext()
+	initialCtx.Set("initial_key", "initial_value")
+
+	root := &State{
+		ID: 1,
+		EntryAction: func(ctx context.Context, evt *Event, from StateID, to StateID) error {
+			capturedCtx = FromContext(ctx)
+			// Set a value from within the action
+			if capturedCtx != nil {
+				capturedCtx.Set("action_key", "action_value")
+			}
+			return nil
+		},
+	}
+
+	machine, err := NewMachine(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rt := NewRuntime(machine, initialCtx)
+	if err := rt.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Stop()
+
+	if capturedCtx == nil {
+		t.Fatal("entry action did not receive context")
+	}
+
+	// Verify initial value is preserved
+	if capturedCtx.Get("initial_key") != "initial_value" {
+		t.Fatal("initial value not preserved")
+	}
+
+	// Verify action-set value exists
+	if capturedCtx.Get("action_key") != "action_value" {
+		t.Fatal("action-set value not found")
 	}
 }

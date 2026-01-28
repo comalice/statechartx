@@ -247,6 +247,24 @@ type Runtime struct {
 	doneEventsMu      sync.RWMutex
 }
 
+// contextKey is the unexported type for context key to prevent collisions
+type contextKey struct{}
+
+// extContextKey is the key for storing *Context in context.Context
+var extContextKey = contextKey{}
+
+// FromContext retrieves the *Context from a context.Context.
+// Returns nil if no Context is stored in the context or if ctx is nil.
+func FromContext(ctx context.Context) *Context {
+	if ctx == nil {
+		return nil
+	}
+	if v, ok := ctx.Value(extContextKey).(*Context); ok {
+		return v
+	}
+	return nil
+}
+
 // parallelRegion represents a single region in a parallel state
 type parallelRegion struct {
 	stateID      StateID
@@ -412,9 +430,12 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	rt.ctx, rt.cancel = context.WithCancel(ctx)
 
+	// Inject runtime context into Go context for action access
+	ctxWithExt := context.WithValue(rt.ctx, extContextKey, rt.Ctx())
+
 	// Enter initial state hierarchy (from root to initial state)
 	rt.mu.Lock()
-	if err := rt.enterInitialState(rt.ctx); err != nil {
+	if err := rt.enterInitialState(ctxWithExt); err != nil {
 		rt.mu.Unlock()
 		return err
 	}

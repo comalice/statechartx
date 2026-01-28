@@ -142,3 +142,8 @@ make check  # format, vet, staticcheck, lint, test-race
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Roadmap
+
+- event addressing (SCXML style)
+- 
