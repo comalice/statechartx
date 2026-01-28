@@ -8,7 +8,7 @@ import (
 )
 
 func TestStdlibOnlyCore(t *testing.T) {
-	goModPath := "go.mod"
+	goModPath := "../go.mod"
 	f, err := os.Open(goModPath)
 	if err != nil {
 		t.Fatalf("Failed to open go.mod: %v", err)

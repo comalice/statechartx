@@ -24,8 +24,12 @@ func TestMachineWithCustomExtensibility(t *testing.T) {
 						Actions:  []primitives.ActionRef{func(ctx *primitives.Context, e primitives.Event) { count++; ctx.Set("count", float64(count)) }},
 						Priority: 1,
 					}},
+					"STOP": {{Target: "stopped"}},
 				}),
-			"stopped": primitives.NewStateConfig("stopped", primitives.Atomic),
+			"stopped": primitives.NewStateConfig("stopped", primitives.Atomic).
+				WithOn(map[string][]primitives.TransitionConfig{
+					"RESET": {{Target: "running"}},
+				}),
 		},
 	}
 	if err := config.Validate(); err != nil {

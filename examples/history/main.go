@@ -18,7 +18,7 @@ func main() {
 	session := mb.Compound("session").WithInitial("sub")
 	sub := session.Compound("sub").WithInitial("a")
 	sub.Atomic("a").Transition("SWITCH", "b")
-	history := sub.History("h", true)
+	_ = sub.History("h", true) // Used as a transition target
 	b := sub.Atomic("b")
 	b.Transition("SAVE", "history")
 	b.Transition("RESTORE", "history")
