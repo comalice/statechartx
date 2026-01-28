@@ -411,7 +411,6 @@ func NewRuntime(machine *Machine, ext any) *Runtime {
 	}
 }
 
-// Ctx returns the Context if the Runtime was created with one (or auto-created via nil ext).
 // Returns nil if ext is not a Context, allowing custom ext usage to coexist.
 func (rt *Runtime) Ctx() *Context {
 	if ctx, ok := rt.ext.(*Context); ok {
@@ -420,7 +419,6 @@ func (rt *Runtime) Ctx() *Context {
 	return nil
 }
 
-// Start initializes the runtime and enters the initial state configuration.
 // Spawns a goroutine for event processing. Call Stop() to terminate gracefully.
 // Returns error if already started or if initial state entry fails.
 func (rt *Runtime) Start(ctx context.Context) error {

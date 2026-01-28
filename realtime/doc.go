@@ -82,5 +82,4 @@
 //   - Throughput: ~60K events/sec at 60 FPS
 //   - Determinism: Guaranteed
 //   - Use cases: Games, physics sims, robotics, testing
-//
 package realtime
