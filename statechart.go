@@ -247,6 +247,24 @@ type Runtime struct {
 	doneEventsMu      sync.RWMutex
 }
 
+// contextKey is the unexported type for context key to prevent collisions
+type contextKey struct{}
+
+// extContextKey is the key for storing *Context in context.Context
+var extContextKey = contextKey{}
+
+// FromContext retrieves the *Context from a context.Context.
+// Returns nil if no Context is stored in the context or if ctx is nil.
+func FromContext(ctx context.Context) *Context {
+	if ctx == nil {
+		return nil
+	}
+	if v, ok := ctx.Value(extContextKey).(*Context); ok {
+		return v
+	}
+	return nil
+}
+
 // parallelRegion represents a single region in a parallel state
 type parallelRegion struct {
 	stateID      StateID
@@ -376,6 +394,11 @@ func (m *Machine) findDeepestInitial(stateID StateID) StateID {
 //
 // The returned runtime is ready to be started with Start().
 func NewRuntime(machine *Machine, ext any) *Runtime {
+	// Auto-create Context if ext is nil for convenience
+	if ext == nil {
+		ext = NewContext()
+	}
+
 	return &Runtime{
 		machine:           machine,
 		ext:               ext,
@@ -388,7 +411,14 @@ func NewRuntime(machine *Machine, ext any) *Runtime {
 	}
 }
 
-// Start initializes the runtime and enters the initial state configuration.
+// Returns nil if ext is not a Context, allowing custom ext usage to coexist.
+func (rt *Runtime) Ctx() *Context {
+	if ctx, ok := rt.ext.(*Context); ok {
+		return ctx
+	}
+	return nil
+}
+
 // Spawns a goroutine for event processing. Call Stop() to terminate gracefully.
 // Returns error if already started or if initial state entry fails.
 func (rt *Runtime) Start(ctx context.Context) error {
@@ -398,9 +428,12 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	rt.ctx, rt.cancel = context.WithCancel(ctx)
 
+	// Inject runtime context into Go context for action access
+	ctxWithExt := context.WithValue(rt.ctx, extContextKey, rt.Ctx())
+
 	// Enter initial state hierarchy (from root to initial state)
 	rt.mu.Lock()
-	if err := rt.enterInitialState(rt.ctx); err != nil {
+	if err := rt.enterInitialState(ctxWithExt); err != nil {
 		rt.mu.Unlock()
 		return err
 	}
